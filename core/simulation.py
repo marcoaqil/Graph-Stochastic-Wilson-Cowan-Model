@@ -13,7 +13,7 @@ from numba import jit
 #from sympy import exp
 from scipy import stats
 import os
-from analysis import GraphKernel
+#from analysis import GraphKernel
 
 ####################################################################################################
 ####################################################################################################    
@@ -155,7 +155,7 @@ def WCLoop(E_0, I_0,  Delta_t,
     return E_Delta_t, I_Delta_t
 
 #Wilson Cowan model 
-def Graph_Wilson_Cowan_Model(E_0, I_0, Time=1000, Delta_t=0.01,
+def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
                           propagator_EE, propagator_IE, propagator_EI, propagator_II, 
                           d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1, Visual=False):
     

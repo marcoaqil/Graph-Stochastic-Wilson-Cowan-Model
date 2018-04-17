@@ -1,17 +1,7 @@
 import numpy as np
 import scipy as sp
-from scipy import sparse
 import matplotlib.pyplot as plt
-from scipy import special
-from random import gauss
-#import hdf5storage
 import h5py
-import timeit
-from numba import jit
-#from sympy.solvers.solveset import nonlinsolve
-#from sympy.core.symbol import symbols
-#from sympy import exp
-from scipy import stats
 import os
 
 ####################################################################################################
@@ -59,7 +49,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     
     for i in range(initial_guesses):
         steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i),
-                                          xtol=1e-9, maxfev=200, full_output=True)
+                                          xtol=1e-6, full_output=True)
         if steady_state[0][0]>=0 and steady_state[0][1]>=0:
             results[0,i]=steady_state[0][0]
             results[1,i]=steady_state[0][1]
@@ -76,7 +66,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     finals=np.copy(uniques)
     
     while p < len(uniques[0])-1:
-        diff = np.sqrt(np.sum((uniques[:,p]-uniques[:,p+1])**2))
+        diff = np.linalg.norm(uniques[:,p]-uniques[:,p+1], ord=2)
         if diff < tolerance:
             finals[:,p]+=uniques[:,p+1]
             uniques=np.delete(uniques, p+1, axis=1)
@@ -90,7 +80,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
                 
     finals[:,p]/=countoccurr        
     
-    print(str(len(uniques[0]))+" unique steady states were found")        
+    print(str(len(finals[0]))+" unique steady states were found")        
    
     return finals, success
 
@@ -198,9 +188,8 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
 #Loop for all semi-analytic calculations given parameter set and eigenvalues: HSS, LSA, PSD
 ####################################################################################################    
 
-def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum, first_k=2, LSA=True, Visual=False, SaveFiles=False):
-
-    
+def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum, first_k=2, LSA=True, Visual=False, SaveFiles=False, Filepath=' '):
+   
     alpha_EE=Parameters[0]
     alpha_IE=Parameters[1]
     alpha_EI=Parameters[2]
@@ -254,19 +243,19 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                  tau_e, tau_i)    
                 
-                if np.all(JacEigs<=0):
+                if np.all(JacEigs.real<=0):
                     print("Stable")
                     SStypes[ss]=1
                     found_stable = True
                     
                 else:
-                    print("Unstable")
-                    
-                    if np.all(Tr**2 - 4*Det >=0):
-                        print("No oscillations")
+                   
+                    #if np.all(Tr**2 - 4*Det >=0):
+                    if np.all(JacEigs.imag == 0):
+                        print("Unstable: no oscillations")
                         SStypes[ss]=2
                     else:
-                        print("Potential Hopf")
+                        print("Unstable: potential Hopf")
                         SStypes[ss]=3
             
                           
@@ -309,10 +298,13 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
             
            
             if SaveFiles==True:
-                        
-                filepath = 'G:/Macbook Stuff/Analysis Results/'+Graph_Kernel+' Kernel/aEE=%.3g aIE=%.3g aEI=%.3g aII=%.3g dE=%.3g dI=%.3g ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-                filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g snE=%.3g snI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i,sigma_noise_e,sigma_noise_i) 
-        
+                
+                if Filepath==' ':
+                    filepath = 'G:/Macbook Stuff/Analysis Results/'+Graph_Kernel+' Kernel/aEE=%.3g aIE=%.3g aEI=%.3g aII=%.3g dE=%.3g dI=%.3g ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
+                    filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g snE=%.3g snI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i,sigma_noise_e,sigma_noise_i) 
+                else:
+                    filepath=Filepath
+                    
                 if not os.path.exists(filepath):
                     os.makedirs(filepath)
                 
