@@ -167,22 +167,22 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     
     
     if np.any(Jacobian_eigenvalues.real>0.1) or np.any(np.isnan(Jacobian_eigenvalues)):
-       # print("E*=%.4g, I*=%.4g: unstable"%(Ess,Iss))
+        print("E*=%.4g, I*=%.4g: unstable"%(Ess,Iss))
         SStype=0
         suitable = False
     else:
         if np.all(Jacobian_eigenvalues.real<0) and np.all(Jacobian_eigenvalues.imag==0):
-           #print("E*=%.4g, I*=%.4g: strictly stable"%(Ess,Iss))
+            print("E*=%.4g, I*=%.4g: strictly stable"%(Ess,Iss))
             SStype=1
             suitable = True
       #all or any in the line below for imaginary? ask rikkert #do they all need imaginary parts?
         elif np.all(Jacobian_eigenvalues.real<0) and np.any(Jacobian_eigenvalues.imag != 0):
-         #print("E*=%.4g, I*=%.4g: stable, with nonzero imaginary components"%(Ess,Iss))
+            print("E*=%.4g, I*=%.4g: stable, with nonzero imaginary components"%(Ess,Iss))
             SStype=2
             suitable = True
                 #same question here. what if some imaginary are zero and some nonzero?
         elif np.all(Jacobian_eigenvalues.real==0) and np.all(Jacobian_eigenvalues.imag != 0):
-          #  print("E*=%.4g, I*=%.4g: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
+            print("E*=%.4g, I*=%.4g: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
             SStype=3
             suitable = True
           
@@ -192,7 +192,7 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
 #first subcase: all imaginary parts are zero (stable/undetermined?)
 #second subcase: some imaginary parts are nonzero (need to consider overlap? does it matter if there are eigenvalues with magnitude zero?)
 #third subcase: all imaginary parts are nonzero (same question)
-         #   print("E*=%.3g, I*=%.3g: undetermined"%(Ess,Iss))
+            print("E*=%.3g, I*=%.3g: undetermined"%(Ess,Iss))
             SStype=4
             suitable = True
         

@@ -87,8 +87,8 @@ def graph_WCM_propagators(Graph_Kernel='Gaussian',
         Laplacian = sp.sparse.diags(diagonals,[-1,0,1]).toarray()
         
         #closed boundaries
-        Laplacian[0,0]=1
-        Laplacian[gridsize-1,gridsize-1]=1
+        #Laplacian[0,0]=1
+        #Laplacian[gridsize-1,gridsize-1]=1
         
         for p in range(syn):
             k1=int(np.floor(gridsize*np.random.rand()))
@@ -99,8 +99,8 @@ def graph_WCM_propagators(Graph_Kernel='Gaussian',
             Laplacian[k2,k2]+=1
             
         #periodic boundary
-        #Laplacian[0,gridsize-1]=-1
-        #Laplacian[gridsize-1,0]=-1
+        Laplacian[0,gridsize-1]=-1
+        Laplacian[gridsize-1,0]=-1
         Laplacian/=(h**2)
         s, U = np.linalg.eigh(Laplacian)
         V=U.T           
@@ -162,10 +162,10 @@ def GWCM_Loop(E_0, I_0,  Delta_t,
     
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
-    
-    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-propagator_EE * E_0 + propagator_IE * I_0 - P))+ Noise_E/np.sqrt(Delta_t)) 
-    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-propagator_EI * E_0 + propagator_II * I_0 - Q))+ Noise_I/np.sqrt(Delta_t)) 
-    
+    print(propagator_EE.shape)
+    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-np.dot(propagator_EE,E_0) + np.dot(propagator_IE,I_0) - P))+ Noise_E/np.sqrt(Delta_t)) 
+    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-np.dot(propagator_EI,E_0) + np.dot(propagator_II,I_0) - Q))+ Noise_I/np.sqrt(Delta_t)) 
+    print(E_Delta_t.shape)
     return E_Delta_t, I_Delta_t
 
 #Wilson Cowan model 
@@ -181,11 +181,15 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
         ax.set_ylim(0, 1)
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')
-        print(str(E_0[10])+" "+str(I_0[20]))
+        
         ax.plot(I_0, 'b-')
         ax.plot(E_0, 'r-')
         fig.canvas.draw()
-     
+    
+    E_Delta_t = np.zeros_like(E_0)
+    I_Delta_t = np.zeros_like(I_0)
+    
+    
     for i in range(int(round(Time/Delta_t))):
         print(i)
         if sigma_noise_e!=0 or sigma_noise_i!=0:
@@ -202,7 +206,7 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
         #     I_Delta_t[580:620]=0.9*np.ones(40)
         
         E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0, Delta_t,
-           propagator_EE, propagator_IE, propagator_EI, propagator_II, 
+                           propagator_EE, propagator_IE, propagator_EI, propagator_II, 
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
             
 
@@ -218,7 +222,8 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
            
         E_0 = np.copy(E_Delta_t)   
         I_0 = np.copy(I_Delta_t)
-        print(str(E_0[10])+" "+str(I_0[20]))
+        #print(E_0.shape)
+        #print(str(E_0[10])+" "+str(I_0[20]))
 
             
             
