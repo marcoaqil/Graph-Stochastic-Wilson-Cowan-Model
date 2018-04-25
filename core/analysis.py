@@ -80,10 +80,11 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     
     for i in range(initial_guesses):
         steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i),
-                                          xtol=1e-9, full_output=True)
+                                          #xtol=1e-9, 
+                                          full_output=True) 
         
      #important line: conditions for success of SS calculation
-        if steady_state[0][0]>=0 and steady_state[0][1]>=0 and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-30:
+        if steady_state[0][0]>=0 and steady_state[0][1]>=0: # and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-20:
             results[0,i]=steady_state[0][0]
             results[1,i]=steady_state[0][1]
             success=True
@@ -133,7 +134,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
 def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=None, Iss=None, 
                        alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1, 
                        sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
-                       tau_e=1, tau_i=1):
+                       tau_e=1, tau_i=1, Visual=False):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -165,24 +166,32 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
     Jacobian_eigenvalues[:,1]= (Trace - sp.sqrt(Trace**2 - 4*Determinant))/2.0
     
+    if Visual==True:
+        plt.ion()
+        fig = plt.figure()
+        #ax = fig.add_subplot(111)
+        #ax.set_xlim(-0.1, 20000)
+        #ax.set_ylim(0, 20)
+        plt.scatter(np.ravel(Jacobian_eigenvalues).real,np.ravel(Jacobian_eigenvalues).imag, s=2, c='black')
     
-    if np.any(Jacobian_eigenvalues.real>0.1) or np.any(np.isnan(Jacobian_eigenvalues)):
-        print("E*=%.4g, I*=%.4g: unstable"%(Ess,Iss))
+    if np.any(Jacobian_eigenvalues.real>-0.1) or np.any(np.isnan(Jacobian_eigenvalues)):
+        print("E*=%.4f, I*=%.4f: unstable"%(Ess,Iss))
         SStype=0
         suitable = False
     else:
+                  
         if np.all(Jacobian_eigenvalues.real<0) and np.all(Jacobian_eigenvalues.imag==0):
-            print("E*=%.4g, I*=%.4g: strictly stable"%(Ess,Iss))
+            print("E*=%.4f, I*=%.4f: strictly stable"%(Ess,Iss))
             SStype=1
             suitable = True
       #all or any in the line below for imaginary? ask rikkert #do they all need imaginary parts?
         elif np.all(Jacobian_eigenvalues.real<0) and np.any(Jacobian_eigenvalues.imag != 0):
-            print("E*=%.4g, I*=%.4g: stable, with nonzero imaginary components"%(Ess,Iss))
+            print("E*=%.4f, I*=%.4f: stable, with nonzero imaginary components"%(Ess,Iss))
             SStype=2
             suitable = True
                 #same question here. what if some imaginary are zero and some nonzero?
         elif np.all(Jacobian_eigenvalues.real==0) and np.all(Jacobian_eigenvalues.imag != 0):
-            print("E*=%.4g, I*=%.4g: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
+            print("E*=%.4f, I*=%.4f: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
             SStype=3
             suitable = True
           
@@ -192,11 +201,13 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
 #first subcase: all imaginary parts are zero (stable/undetermined?)
 #second subcase: some imaginary parts are nonzero (need to consider overlap? does it matter if there are eigenvalues with magnitude zero?)
 #third subcase: all imaginary parts are nonzero (same question)
-            print("E*=%.3g, I*=%.3g: undetermined"%(Ess,Iss))
+            print("E*=%.4f, I*=%.4f: undetermined"%(Ess,Iss))
             SStype=4
             suitable = True
+            
+            
         
-    return SStype, suitable #Trace, Determinant, Jacobian_eigenvalues
+    return SStype, suitable, Jacobian_eigenvalues #Trace, Determinant, Jacobian_eigenvalues
 
 
 ####################################################################################################
@@ -281,8 +292,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
     D=Parameters[12]
     tau_e=Parameters[13] 
     tau_i=Parameters[14] 
-    sigma_noise_e=Parameters[15] 
-    sigma_noise_i=Parameters[16]
+    #sigma_noise_e=Parameters[15] 
+    #sigma_noise_i=Parameters[16]   #only one sigma noise=scale_param
     
     #D=1.0
     #tau_e=1.0
@@ -303,10 +314,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
         nrSS=len(steady_states[0])
         #distance between eachSS power spectrum and true
         Dist=np.zeros(nrSS)
-        #type1=stable; type2=potential pattern, no oscillations; type3=potential oscillations
+        scale_params=np.zeros(nrSS)
+        #see linear stability analysis method for types
         SStypes=np.zeros(nrSS)
         
         allG = np.empty((nrSS,len(eigs),2,2), dtype=float)
+        allJacEigs = np.empty((nrSS, len(eigs), 2), dtype=complex)
         
         for ss in range(len(steady_states[0])):
             
@@ -315,7 +328,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
             
             
             if LSA==True:
-                SStypes[ss], found_suitable = GraphWC_Jacobian_TrDet(eigs, Graph_Kernel, Ess, Iss,                        
+                SStypes[ss], found_suitable, allJacEigs[ss,:,:] = GraphWC_Jacobian_TrDet(eigs, Graph_Kernel, Ess, Iss,                        
                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                  tau_e, tau_i)    
@@ -327,14 +340,15 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                                               alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                               sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
                                               tau_e, tau_i, 
-                                              sigma_noise_e, sigma_noise_i)
+                                              sigma_noise_e=1, sigma_noise_i=1)
             
             ########*******######
             #important: insert here a metric to quantify distance between true spectrum and calculated
             ######****######
             #Dist[ss] = np.max(np.abs(G[first_k:last_k,0,0]- True_Spectrum))
-            #scale_param = np.dot(allG[ss,first_k:last_k,0,0],True_Spectrum)/np.linalg.norm(True_Spectrum, ord=2)
-            Dist[ss] = np.linalg.norm(allG[ss,first_k:last_k,0,0]- True_Spectrum, ord=2)
+            scale_params[ss] = np.dot(True_Spectrum,allG[ss,first_k:last_k,0,0])/(np.linalg.norm(allG[ss,first_k:last_k,0,0], ord=2))**2            
+            
+            Dist[ss] = np.linalg.norm(True_Spectrum - scale_params[ss] * allG[ss,first_k:last_k,0,0], ord=2)
             #Dist[ss] = -stats.ks_2samp( Gmatrix[first_k:last_k,0,0], True_Spectrum )[1]
         
         if found_suitable==True:    
@@ -343,8 +357,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
             if ~np.all(np.isnan(Dist[mask])):
                 bestSSS = mask[np.nanargmin(Dist[mask])][0]
                 minDist=Dist[bestSSS]
-                print("Best suitable steady state: "+str(bestSSS)+", with Ess="+str(round(steady_states[0,bestSSS],3))+" Iss="+str(round(steady_states[1,bestSSS],3))+", Distance: "+str(round(minDist,3)))       
-                bestG=allG[bestSSS,:,:,:]
+                scale_param=scale_params[bestSSS]
+                print("Best suitable steady state: %d, with Ess=%.4f Iss=%.4f, Distance: %.4f, Scale: %.4f"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], minDist, scale_param))
+                bestG=scale_param * allG[bestSSS,:,:,:]
                 
                 
                     
@@ -355,10 +370,15 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #ax = fig.add_subplot(111)
                     #ax.set_xlim(-0.1, 20000)
                     #ax.set_ylim(0, 20)
+                    plt.scatter(np.ravel(allJacEigs[bestSSS,:,:]).real,np.ravel(allJacEigs[bestSSS,:,:]).imag, s=2, c='black')                   
+                    fig = plt.figure()
+                    #ax = fig.add_subplot(111)
+                    #ax.set_xlim(-0.1, 20000)
+                    #ax.set_ylim(0, 20)
                     line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
                     line1, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,0,0], 'r-')
                     line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'k--')
-                    
+                 
                   
                     
                 
@@ -367,7 +387,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     
                     if Filepath==' ':
                         filepath = 'G:/Macbook Stuff/Analysis Results/'+Graph_Kernel+' Kernel/aEE=%.3g aIE=%.3g aEI=%.3g aII=%.3g dE=%.3g dI=%.3g ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-                        filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g snE=%.3g snI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i,sigma_noise_e,sigma_noise_i) 
+                        filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
                     else:
                         filepath=Filepath
                         
@@ -390,18 +410,19 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     file.write("D=%f \n"%D)
                     file.write("Tau_E=%f \n"%tau_e)
                     file.write("Tau_I=%f \n"%tau_i)
-                    file.write("Sigma_Noise_E=%f \n"%sigma_noise_e)
-                    file.write("Sigma_Noise_I=%f \n"%sigma_noise_i)       
+                    #file.write("Sigma_Noise_E=%f \n"%sigma_noise_e)
+                    #file.write("Sigma_Noise_I=%f \n"%sigma_noise_i)       
                     file.close
                     
                     with h5py.File(filepath+"analysis.h5") as hf:
                         hf.create_dataset("Steady States",  data=steady_states)
                         hf.create_dataset("Distance",  data=Dist)
+                        hf.create_dataset("Scale", data=scale_params)
                         hf.create_dataset("Type",  data=SStypes)
                         hf.create_dataset("AllG", data=allG)
                     
                     if Visual==True:
-                        plt.savefig(filepath+"Power Spectrum.png")   
+                        plt.savefig(fig, filepath+"Power Spectrum.png")   
                     
                         
                 #if G[3,0,0]-G[-3,0,0]<=1:
@@ -410,12 +431,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                                    
                 return minDist
             else:
-                #print("Unrealistic spectra")
+                print("Unrealistic spectra")
                 return float('Inf')
         else:
-            #print("No suitable (LSA) steady states found")
+            print("No suitable (LSA) steady states found")
             return float('Inf')
     
     else:
-        #case where no positive/exact solutions found
+        #case where no positive/exact solutions found (can print from SS method)
         return float('Inf')

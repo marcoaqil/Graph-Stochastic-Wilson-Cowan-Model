@@ -162,10 +162,10 @@ def GWCM_Loop(E_0, I_0,  Delta_t,
     
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
-    print(propagator_EE.shape)
+    #print(propagator_EE.shape)
     E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-np.dot(propagator_EE,E_0) + np.dot(propagator_IE,I_0) - P))+ Noise_E/np.sqrt(Delta_t)) 
     I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-np.dot(propagator_EI,E_0) + np.dot(propagator_II,I_0) - Q))+ Noise_I/np.sqrt(Delta_t)) 
-    print(E_Delta_t.shape)
+    #print(E_Delta_t.shape)
     return E_Delta_t, I_Delta_t
 
 #Wilson Cowan model 
