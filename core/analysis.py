@@ -22,28 +22,39 @@ def GraphKernel(x,t,type='Gaussian'):
 
 ####################################################################################################
 ####################################################################################################
-def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0):
-    diagonals = [-np.ones(gridsize-1),2*np.ones(gridsize+1),-np.ones(gridsize-1)]
-    Laplacian = sp.sparse.diags(diagonals,[-1,0,1]).toarray()
-        
-        #closed boundaries
-    Laplacian[0,0]=1
-    Laplacian[gridsize-1,gridsize-1]=1
-        
-    for p in range(syn):
+def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
+     
+    diagonals = [np.ones(gridsize-1),np.zeros(gridsize+1),np.ones(gridsize-1)]
+    #1D grid-graph
+    AdjMatrix = sp.sparse.diags(diagonals,[-1,0,1]).toarray() 
+    #periodic boundary
+    #AdjMatrix[0,gridsize-1]=1
+    #AdjMatrix[gridsize-1,0]=1
+    
+    #"synapses" (nonlocal connections) 
+    for p in range(syn):        
         k1=int(np.floor(gridsize*np.random.rand()))
         k2=int(np.floor(gridsize*np.random.rand()))
-        Laplacian[k1,k2]=-1
-        Laplacian[k2,k1]=-1
-        Laplacian[k1,k1]+=1
-        Laplacian[k2,k2]+=1
-            
-    #periodic boundary
-    #Laplacian[0,gridsize-1]=-1
-    #Laplacian[gridsize-1,0]=-1
+        AdjMatrix[k1,k2]=-1
+        AdjMatrix[k2,k1]=-1
+    
+    Deg=np.sum(AdjMatrix, axis=0)
+    sqrt_Deg=np.power(Deg,-0.5)
+    Degree_Matrix=sp.sparse.diags(Deg)
+    sqrt_Degree_Matrix=sp.sparse.diags(sqrt_Deg)
+    regLap = Degree_Matrix - sp.sparse.csc_matrix(AdjMatrix)
+    Laplacian = (sp.sparse.csc_matrix.dot(sqrt_Degree_Matrix,sp.sparse.csc_matrix.dot(regLap,sqrt_Degree_Matrix))).toarray()
+    #Laplacian[Laplacian>1]=1
+    
+    #unnormalized laplacian
+    Laplacian=regLap.toarray()
+    
     Laplacian/=(h**2)
-        
-    return np.linalg.eigvalsh(Laplacian)
+    
+    if vecs==False:    
+        return np.linalg.eigvalsh(Laplacian)
+    else:
+        return np.linalg.eigh(Laplacian)
         
 ####################################################################################################
 ####################################################################################################
@@ -238,34 +249,48 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
     
     a = d_e*Ess*(1-d_e*Ess)
     b = d_i*Iss*(1-d_i*Iss)
+    
+    Exc_Spectrum_Only=True
+    
+    if Exc_Spectrum_Only==True:
+        Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
+        G_EE = alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)
+        G_IE = alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)
+        G_EI = alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)
+        G_II = alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)
+        
+        Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*G_EE+d_i*tau_e+b*tau_e*G_II))*((tau_i/tau_e) + ((a**2)*(G_IE**2)+ (d_i + b*G_II)**2)/(d_e*d_i+ (d_e*b*G_II) - (a*d_i*G_EE) - a*b*(G_EE*G_II-G_EI*G_IE)))
+                            
+    #else:    
     
     
-    Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
-   
-    A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
-    A = np.moveaxis(A,-1,0)
-    detA = np.linalg.det(A)
-   
-    A_resc=np.copy(A)
-    A_resc[:,0,0]=-A[:,1,1]
-    A_resc[:,1,1]=-A[:,0,0]
-    A_resc_T=np.moveaxis(A_resc,1,2)
-    #A-np.trace(A,axis1=1,axis2=2)[:,np.newaxis,np.newaxis]*np.eye(2)
-    trdet = 2*detA*np.trace(A,axis1=1,axis2=2)  
-    
-    G = (detA[:,np.newaxis,np.newaxis]*Dmatrix + A_resc*Dmatrix*A_resc_T)/trdet[:,np.newaxis,np.newaxis]
-    
+        Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
+       
+        A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
+        A = np.moveaxis(A,-1,0)
+        detA = np.linalg.det(A)
+       
+        A_resc=np.copy(A)
+        A_resc[:,0,0]=-A[:,1,1]
+        A_resc[:,1,1]=-A[:,0,0]
+        A_resc_T=np.moveaxis(A_resc,1,2)
+        #A-np.trace(A,axis1=1,axis2=2)[:,np.newaxis,np.newaxis]*np.eye(2)
+        trdet = detA*np.trace(A,axis1=1,axis2=2)  
+        
+        Gmatrix = 0.5*(detA[:,np.newaxis,np.newaxis]*Dmatrix + A_resc*Dmatrix*A_resc_T)/trdet[:,np.newaxis,np.newaxis]
+        
     if Visual==True:
         plt.ion()
         fig = plt.figure()
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
-        line2, = plt.loglog(np.arange(1,len(eigs)+1),G[:,1,1], 'b-')
-        line1, = plt.loglog(np.arange(1,len(eigs)+1),G[:,0,0], 'r-')
+        line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
+        line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
+        line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'k--')
     
-    return G
+    return Gmatrix
 
 
 
