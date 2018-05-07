@@ -253,6 +253,7 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
     Exc_Spectrum_Only=True
     
     if Exc_Spectrum_Only==True:
+        Gmatrix = np.zeros((len(eigs),2,2), dtype=float)
         Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
         G_EE = alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)
@@ -262,9 +263,8 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
         
         Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*G_EE+d_i*tau_e+b*tau_e*G_II))*((tau_i/tau_e) + ((a**2)*(G_IE**2)+ (d_i + b*G_II)**2)/(d_e*d_i+ (d_e*b*G_II) - (a*d_i*G_EE) - a*b*(G_EE*G_II-G_EI*G_IE)))
                             
-    #else:    
-    
-    
+    else:    
+       
         Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
        
         A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
@@ -277,8 +277,8 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
         A_resc_T=np.moveaxis(A_resc,1,2)
         #A-np.trace(A,axis1=1,axis2=2)[:,np.newaxis,np.newaxis]*np.eye(2)
         trdet = detA*np.trace(A,axis1=1,axis2=2)  
-        
-        Gmatrix = 0.5*(detA[:,np.newaxis,np.newaxis]*Dmatrix + A_resc*Dmatrix*A_resc_T)/trdet[:,np.newaxis,np.newaxis]
+        for i in range(len(eigs)):
+            Gmatrix[i,:,:] = 0.5*(detA[i]*Dmatrix + np.dot(A_resc[i,:,:], np.dot(Dmatrix, A_resc_T[i,:,:])))/trdet[i]
         
     if Visual==True:
         plt.ion()
@@ -286,11 +286,11 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
-        line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
-        line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-        line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'k--')
+        #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
+        #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
+        line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'r-')
     
-    return Gmatrix
+    return Gmatrix2
 
 
 
@@ -314,9 +314,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
     sigma_IE=Parameters[9]
     sigma_EI=Parameters[10]
     sigma_II=Parameters[11]
-    D=Parameters[12]
-    tau_e=Parameters[13] 
-    tau_i=Parameters[14] 
+    D=1
+    tau_e=Parameters[12] 
+    tau_i=Parameters[13] 
     #sigma_noise_e=Parameters[15] 
     #sigma_noise_i=Parameters[16]   #only one sigma noise=scale_param
     
@@ -360,7 +360,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                 
               
                     
-    
+            
             allG[ss,:,:,:] = Graph_WC_SpatialPowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
                                               alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                               sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
@@ -376,7 +376,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
             Dist[ss] = np.linalg.norm(True_Spectrum - scale_params[ss] * allG[ss,first_k:last_k,0,0], ord=2)
             #Dist[ss] = -stats.ks_2samp( Gmatrix[first_k:last_k,0,0], True_Spectrum )[1]
         
-        if found_suitable==True:    
+        if np.any(SStypes!=0):    
             
             mask = np.argwhere(SStypes!=0)       
             if ~np.all(np.isnan(Dist[mask])):
@@ -400,7 +400,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #ax = fig.add_subplot(111)
                     #ax.set_xlim(-0.1, 20000)
                     #ax.set_ylim(0, 20)
-                    line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
+                    #line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
                     line1, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,0,0], 'r-')
                     line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'k--')
                  
@@ -411,8 +411,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                 if SaveFiles==True:
                     
                     if Filepath==' ':
-                        filepath = 'G:/Macbook Stuff/Analysis Results/'+Graph_Kernel+' Kernel/aEE=%.3g aIE=%.3g aEI=%.3g aII=%.3g dE=%.3g dI=%.3g ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-                        filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
+                        filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
+                        filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
                     else:
                         filepath=Filepath
                         
@@ -447,7 +447,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                         hf.create_dataset("AllG", data=allG)
                     
                     if Visual==True:
-                        plt.savefig(fig, filepath+"Power Spectrum.png")   
+                        plt.savefig(filepath+"Power Spectrum.png")   
                     
                         
                 #if G[3,0,0]-G[-3,0,0]<=1:

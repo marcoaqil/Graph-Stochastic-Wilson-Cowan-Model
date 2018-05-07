@@ -13,7 +13,7 @@ from numba import jit
 #from sympy import exp
 from scipy import stats
 import os
-from analysis import GraphKernel, one_dim_Laplacian_eigenvalues
+from analysis import GraphKernel, one_dim_Laplacian_eigenvalues, Graph_WC_SpatialPowerSpectrum
 
 ####################################################################################################
 ####################################################################################################    
@@ -24,7 +24,7 @@ from analysis import GraphKernel, one_dim_Laplacian_eigenvalues
 #testing any time-evolution propagator defined by a kernel on the graph
 ####################################################################################################   
 
-def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel='Gaussian', sigma_noise=0,
+def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_noise=0,
                           one_dim=False, syn=0, gridsize=1000,  h=0.01, eigvals=None, eigvecs=None,                         
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
        
@@ -119,35 +119,14 @@ def graph_WCM_propagators(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
     t_II = (0.5*sigma_II**2)/D
     
     ForceParallel=True
-    
+                
     if one_dim==True:
-        diagonals = [-np.ones(gridsize-1),2*np.ones(gridsize+1),-np.ones(gridsize-1)]
-        Laplacian = sp.sparse.diags(diagonals,[-1,0,1]).toarray()
-        
-        #closed boundaries
-        #Laplacian[0,0]=1
-        #Laplacian[gridsize-1,gridsize-1]=1
-        
-        for p in range(syn):
-            k1=int(np.floor(gridsize*np.random.rand()))
-            k2=int(np.floor(gridsize*np.random.rand()))
-            Laplacian[k1,k2]=-1
-            Laplacian[k2,k1]=-1
-            Laplacian[k1,k1]+=1
-            Laplacian[k2,k2]+=1
-            
-        #periodic boundary
-        Laplacian[0,gridsize-1]=-1
-        Laplacian[gridsize-1,0]=-1
-        Laplacian/=(h**2)
-        s, U = np.linalg.eigh(Laplacian)
-        V=U.T           
-  
-        
+        s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+        V=U.T
     else:
-        s = eigvals
-        U = eigvecs
-        V = eigvecs.T
+        s=eigvals
+        U=eigvecs
+        V=eigvecs.T
            
      
     if ForceParallel==True:   
@@ -240,8 +219,10 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
     
     Timesteps = int(round(Time/Delta_t))
     
-    if SaveActivity==True:
-        E_total = np.zeros((len(E_0),Timesteps-1000))
+    
+    E_total = np.zeros((len(E_0),Timesteps-1000))
+    #assuming we started from a steady state
+    Ess=E_0[0]
     
     
     for i in range(Timesteps):
@@ -262,13 +243,14 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
                            propagator_EE, propagator_IE, propagator_EI, propagator_II, 
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
          
-        if SaveActivity==True and i>=1000:
+        if i>=1000:
             E_total[:,i-1000]=np.copy(E_Delta_t)
             
 
         if Visual==True and i%10 == 0:
             print(i)
             ax.clear()
+            ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(I_Delta_t, 'b-')
@@ -284,61 +266,82 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
     if SaveActivity==True:
                     
         if Filepath==' ':
-            filepath = 'G:/Macbook Stuff/Simulation Results/'+Graph_Kernel+' Kernel/aEE=%.3g aIE=%.3g aEI=%.3g aII=%.3g dE=%.3g dI=%.3g ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-            filepath += 'P=%.3g Q=%.3g sEE=%.3g sIE=%.3g sEI=%.3g sII=%.3g D=%.3g tE=%.3g tI=%.3g/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
+            filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
+            filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
         else:
             filepath=Filepath
                         
         if not os.path.exists(filepath):
             os.makedirs(filepath)
         
-        
-        with h5py.File(filepath+"%d# Sim Activity.h5"%(NSim)) as hf:
+        #make DAT files with sim-only parameters (delta t, time, etc)
+        with h5py.File(filepath+"Activity E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
             if "Activity" not in list(hf.keys()):
                 hf.create_dataset("Activity",  data=E_total)
             else:
                 data=hf["Activity"]
-                data=E_total
-            
-            
+                data[...]=E_total
+    
+                        
     return E_total
 
-def Activity_Analysis(E_total, Ess, one_dim=True, syn=0, gridsize=1000, h=0.01, eigvecs=None, Visual=True):
-     if one_dim==True:
-        diagonals = [-np.ones(gridsize-1),2*np.ones(gridsize+1),-np.ones(gridsize-1)]
-        Laplacian = sp.sparse.diags(diagonals,[-1,0,1]).toarray()
-        
-        #closed boundaries
-        #Laplacian[0,0]=1
-        #Laplacian[gridsize-1,gridsize-1]=1
-        
-        for p in range(syn):
-            k1=int(np.floor(gridsize*np.random.rand()))
-            k2=int(np.floor(gridsize*np.random.rand()))
-            Laplacian[k1,k2]=-1
-            Laplacian[k2,k1]=-1
-            Laplacian[k1,k1]+=1
-            Laplacian[k2,k2]+=1
-            
-        #periodic boundary
-        Laplacian[0,gridsize-1]=-1
-        Laplacian[gridsize-1,0]=-1
-        Laplacian/=(h**2)
-        s, U = np.linalg.eigh(Laplacian)
-        V=U.T           
-         
-     else:
-        V = eigvecs.T
-        
-     PS = np.var(np.dot(V,E_total-Ess), axis=1)
+def Activity_Analysis(E_total, Ess, Iss,
+                      alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
+                      sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
+                      d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
+                      Graph_Kernel='Gaussian', prediction=False,
+                      one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, SavePSD=False, Filepath=' ', NSim=0):
+             
+    if one_dim==True:
+        s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+        V=U.T
+    else:
+        s=eigvals 
+        V=eigvecs.T   
      
-     if Visual==True:
+       
+        
+    PS = np.var(np.dot(V,E_total-Ess), axis=1)
+     
+    if prediction==True:
+         PS_prediction = Graph_WC_SpatialPowerSpectrum(s, Graph_Kernel, Ess, Iss,
+                                                       alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
+                                                       sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
+                                                       tau_e, tau_i,
+                                                       sigma_noise_e, sigma_noise_i, Visual=False)
+         
+     
+    if Visual==True:
         plt.ion()
         fig = plt.figure()
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
-        line2, = plt.loglog(PS)
         
-     return PS
+        line2, = plt.loglog(np.arange(1,len(s)+1), PS, '-r')
+        if prediction==True:
+            line1, = plt.loglog(np.arange(1,len(s)+1), PS_prediction[:,0,0], '--k')
+        
+    if SavePSD==True:                    
+        if Filepath==' ':
+            filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
+            filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
+        else:
+            filepath=Filepath
+                        
+        if not os.path.exists(filepath):
+            os.makedirs(filepath)
+                
+        with h5py.File(filepath+"PSD E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
+            if "PSD" not in list(hf.keys()):
+                hf.create_dataset("PSD",  data=PS)
+            else:
+                del hf["PSD"]
+                hf.create_dataset("PSD",  data=PS)
+                
+        if Visual==True:
+            figpath=filepath+"PSD E0=%.5f Sim #%d.png"%(Ess, NSim)
+            plt.savefig(figpath)        
+        
+    return PS
     
