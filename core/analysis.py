@@ -7,7 +7,9 @@ import os
 
 ####################################################################################################
 ####################################################################################################
-def GraphKernel(x,t,type='Gaussian'):
+#written for python 3.6 
+
+def GraphKernel(x,t,type='Gaussian', a=1, b=1, IC=0):
     if t<0:
         print("Need positive kernel parameter")
         return
@@ -15,9 +17,20 @@ def GraphKernel(x,t,type='Gaussian'):
         if type=='Gaussian':
             return np.exp(-t*x)
         elif type=='Exponential':
-            return t/(t+x)
+            return 2*t/(t**2+x)
         elif type=='Pyramid':
-            return (np.sinc(np.sqrt(x)))**2
+            return t*(np.sinc(np.sqrt(t*x)))**2
+        elif type=='Damped Wave':
+            a=1
+            b=1
+            r_1=(-b+sp.sqrt(b**2 - 4*a*x))/(2*a)
+            r_2=(-b-sp.sqrt(b**2 - 4*a*x))/(2*a)
+            Damped_Wave_Kernel=(r_1*sp.exp(r_2*t)-r_2*sp.exp(r_1*t))/(r_1-r_2)
+            if np.any(Damped_Wave_Kernel.imag!=0):
+                print("Imaginary value in kernel")
+                return
+            else:
+                return Damped_Wave_Kernel.real
 
 
 ####################################################################################################
@@ -228,12 +241,12 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
 #This method calculates and returns (if needed) the 2x2 linearised graph WC Jacobian of each eigenmode separately;
 #and subsequently uses Ornstein-Uhlenbeck statistics for stochastic differential equations
 #to calculate the G matrix for each mode, containing Power Spectral Density of that specific mode, and other quantities
-def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=None, Iss=None,  
+def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=None, Iss=None,  
                        alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1,
                        sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1,
                        tau_e=1, tau_i=1,
-                       sigma_noise_e=1, sigma_noise_i=1,
-                       Visual=False):
+                       sigma_noise_e=1, sigma_noise_i=1, max_omega=100,
+                       Spatial_Spectrum_Only=True, Visual=False):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -249,11 +262,9 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
     
     a = d_e*Ess*(1-d_e*Ess)
     b = d_i*Iss*(1-d_i*Iss)
-    
-    Exc_Spectrum_Only=True
-    
-    if Exc_Spectrum_Only==True:
-        Gmatrix = np.zeros((len(eigs),2,2), dtype=float)
+        
+    if Spatial_Spectrum_Only==True:
+        
         Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
         G_EE = alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)
@@ -262,38 +273,75 @@ def Graph_WC_SpatialPowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='Gaussian'
         G_II = alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)
         
         Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*G_EE+d_i*tau_e+b*tau_e*G_II))*((tau_i/tau_e) + ((a**2)*(G_IE**2)+ (d_i + b*G_II)**2)/(d_e*d_i+ (d_e*b*G_II) - (a*d_i*G_EE) - a*b*(G_EE*G_II-G_EI*G_IE)))
-                            
-    else:    
-       
+        
+        
+        if Visual==True:
+            plt.ion()
+            fig = plt.figure()
+            #ax = fig.add_subplot(111)
+            #ax.set_xlim(-0.1, 20000)
+            #ax.set_ylim(0, 20)
+            #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
+            #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
+            line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'r-')   
+            
+        return Gmatrix2                 
+    else:  
+        Full_Spectrum=np.zeros((len(eigs),1000), dtype=float)
+        
         Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
        
         A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
         A = np.moveaxis(A,-1,0)
-        detA = np.linalg.det(A)
-       
-        A_resc=np.copy(A)
-        A_resc[:,0,0]=-A[:,1,1]
-        A_resc[:,1,1]=-A[:,0,0]
-        A_resc_T=np.moveaxis(A_resc,1,2)
-        #A-np.trace(A,axis1=1,axis2=2)[:,np.newaxis,np.newaxis]*np.eye(2)
-        trdet = detA*np.trace(A,axis1=1,axis2=2)  
-        for i in range(len(eigs)):
-            Gmatrix[i,:,:] = 0.5*(detA[i]*Dmatrix + np.dot(A_resc[i,:,:], np.dot(Dmatrix, A_resc_T[i,:,:])))/trdet[i]
         
-    if Visual==True:
-        plt.ion()
-        fig = plt.figure()
-        #ax = fig.add_subplot(111)
-        #ax.set_xlim(-0.1, 20000)
-        #ax.set_ylim(0, 20)
-        #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
-        #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-        line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'r-')
+#        Gmatrix = np.zeros((len(eigs),2,2), dtype=float)
+#        detA = np.linalg.det(A)      
+#        A_resc=np.copy(A)
+#        A_resc[:,0,0]=-A[:,1,1]
+#        A_resc[:,1,1]=-A[:,0,0]
+#        A_resc_T=np.moveaxis(A_resc,1,2)
+#        A-np.trace(A,axis1=1,axis2=2)[:,np.newaxis,np.newaxis]*np.eye(2)
+#        trdet = detA*np.trace(A,axis1=1,axis2=2)  
+#        for i in range(len(eigs)):
+#            Gmatrix[i,:,:] = 0.5*(detA[i]*Dmatrix + np.dot(A_resc[i,:,:], np.dot(Dmatrix, A_resc_T[i,:,:])))/trdet[i]              
+        
+        i=0
+        omega_range=np.linspace(0,max_omega,np.shape(Full_Spectrum)[1])
+        for omega in omega_range:
+            Full_Spectrum[:,i] = (Dmatrix[0,0]*(A[:,1,1]**2+omega**2) + Dmatrix[1,1]*A[:,0,1]**2)/((A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]-omega**2)**2 + ((A[:,0,0]+A[:,1,1])*omega)**2)
+            #Full_Spectrum[:,i] = (Dmatrix[0,0]*(A[:,1,1]**2+omega**2) + Dmatrix[1,1]*A[:,0,1]**2)/(omega**4 + (A[:,0,0]**2+A[:,1,1]**2)*omega**2 + A[:,0,0]**2 * A[:,1,1]**2)
+        
+            #for k in range(np.shape(A)[0]):
+            #    M=np.matrix(np.linalg.inv(1j*np.eye(2)*omega + A[k,:,:]))
+            #    Full_Spectrum[k,i]=np.dot(M,np.dot(Dmatrix,M.H))[0,0].real
+            
+            #print(i)
+            i+=1
+            
+        if Visual==True:
+            plt.ion()
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            #ax.set_xlim(-0.1, 20000)
+            #ax.set_ylim(0, 20)
+            #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
+            #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
+            ax.set_xscale('log')
+            #if log axis, need to use ax.pcorlormesh...
+            ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range,Full_Spectrum.T)
+            
+        return Full_Spectrum.T
+   
+
     
-    return Gmatrix2
+   
 
 
-
+def Functional_Connectivity(eigvecs, PS):
+    U=eigvecs
+    covariance = np.dot(U,np.dot(np.diag(PS),U.T))
+    FC=np.dot(np.power(np.diag(covariance),-0.5),np.dot(covariance,np.power(np.diag(covariance),-0.5)))
+    return FC
 ####################################################################################################
 ####################################################################################################    
 ####################################################################################################
@@ -361,11 +409,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
               
                     
             
-            allG[ss,:,:,:] = Graph_WC_SpatialPowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
+            allG[ss,:,:,:] = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
                                               alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                               sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
                                               tau_e, tau_i, 
-                                              sigma_noise_e=1, sigma_noise_i=1)
+                                              sigma_noise_e=1, sigma_noise_i=1,
+                                              Spatial_Spectrum_Only=True, Visual=False)
             
             ########*******######
             #important: insert here a metric to quantify distance between true spectrum and calculated
@@ -397,12 +446,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #ax.set_ylim(0, 20)
                     plt.scatter(np.ravel(allJacEigs[bestSSS,:,:]).real,np.ravel(allJacEigs[bestSSS,:,:]).imag, s=2, c='black')                   
                     fig = plt.figure()
-                    #ax = fig.add_subplot(111)
+                    ax = fig.add_subplot(111)
                     #ax.set_xlim(-0.1, 20000)
-                    #ax.set_ylim(0, 20)
+                    ax.set_ylim(1E-2, 1E2)
                     #line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
-                    line1, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,0,0], 'r-')
-                    line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'k--')
+                    line1, = plt.loglog(np.arange(1,len(eigs)+1),0.8*bestG[:,0,0], linewidth=2)#, 'b-')
+                    line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'b--', linewidth=2)
                  
                   
                     
@@ -440,11 +489,24 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     file.close
                     
                     with h5py.File(filepath+"analysis.h5") as hf:
-                        hf.create_dataset("Steady States",  data=steady_states)
-                        hf.create_dataset("Distance",  data=Dist)
-                        hf.create_dataset("Scale", data=scale_params)
-                        hf.create_dataset("Type",  data=SStypes)
-                        hf.create_dataset("AllG", data=allG)
+                        if "Steady States" not in list(hf.keys()):
+                            hf.create_dataset("Steady States",  data=steady_states)
+                            hf.create_dataset("Distance",  data=Dist)
+                            hf.create_dataset("Scale", data=scale_params)
+                            hf.create_dataset("Type",  data=SStypes)
+                            hf.create_dataset("AllG", data=allG)
+                        else:
+                            data=hf["Steady States"]
+                            data[...]=steady_states
+                            if "AllG" in list(hf.keys()):                            
+                                data=hf["Distance"]
+                                data[...]=Dist
+                                data=hf["Scale"]
+                                data[...]=scale_params
+                                data=hf["AllG"]
+                                data[...]=allG
+                            
+                        
                     
                     if Visual==True:
                         plt.savefig(filepath+"Power Spectrum.png")   

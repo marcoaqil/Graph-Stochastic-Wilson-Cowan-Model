@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 from scipy import sparse
 import matplotlib.pyplot as plt
-from scipy import special
+from scipy import signal
 from random import gauss
 #import hdf5storage
 import h5py
@@ -13,8 +13,8 @@ from numba import jit
 #from sympy import exp
 from scipy import stats
 import os
-from analysis import GraphKernel, one_dim_Laplacian_eigenvalues, Graph_WC_SpatialPowerSpectrum
-
+from analysis import *
+#written for python 3.6 
 ####################################################################################################
 ####################################################################################################    
 ####GRAPH SIMULATIONS
@@ -49,8 +49,8 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
         plt.ion()
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_xlim(0, len(u_0))
-        #ax.set_ylim(0, 1)
+        #ax.set_xlim(0, len(u_0))
+        #ax.set_ylim(-2, 10)
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')        
         ax.plot(u_0, 'b-')     
@@ -73,9 +73,11 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
         if SaveActivity==True and i>=1000:
             u_total[:,i-1000]=np.copy(u_Delta_t)
             
-        if Visual==True and i%10 == 0:
+        if Visual==True:# and i%10 == 0:
             print(i)
             ax.clear()
+            ax.set_xlim(0, len(u_0))
+            #ax.set_ylim(-2, 10)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -221,7 +223,7 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
     
     
     E_total = np.zeros((len(E_0),Timesteps-1000))
-    #assuming we started from a steady state
+    #trick to avoid changing this method, assuming we started from a steady state
     Ess=E_0[0]
     
     
@@ -285,7 +287,95 @@ def Graph_Wilson_Cowan_Model(E_0, I_0, Time, Delta_t,
                         
     return E_total
 
-def Activity_Analysis(E_total, Ess, Iss,
+#################################################################################
+#
+# LINEARIZED MODEL
+#
+##################################################################################
+def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
+                          alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
+                          sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
+                          d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
+                          Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
+                          Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
+    
+    t_EE = (0.5*sigma_EE**2)/D
+    t_IE = (0.5*sigma_IE**2)/D
+    t_EI = (0.5*sigma_EI**2)/D    
+    t_II = (0.5*sigma_II**2)/D   
+    
+    a = d_e*Ess*(1-d_e*Ess)
+    b = d_i*Iss*(1-d_i*Iss)
+    
+   
+    if one_dim==True:
+        s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+    else:
+        s=eigvals
+        U=eigvecs
+    
+    beta_E_0 = np.dot(U.T, Ess*np.ones(len(s)))
+    beta_I_0 = np.dot(U.T, Iss*np.ones(len(s)))
+            
+    prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)
+    prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)
+    prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)
+    prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel) 
+    
+    #beta_E_Delta_t = np.zeros_like(beta_E_0)
+    #beta_I_Delta_t = np.zeros_like(beta_I_0)
+    
+    Timesteps = int(round(Time/Delta_t))    
+    time_E = Delta_t/tau_e 
+    time_I = Delta_t/tau_i 
+    
+    beta_E_total = np.zeros((len(beta_E_0),Timesteps-1000))    
+    
+    for i in range(Timesteps):
+        if sigma_noise_e!=0 or sigma_noise_i!=0:
+            Noise_E = sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])
+            Noise_I = sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(beta_I_0))])
+        else:
+            Noise_E = 0
+            Noise_I = 0
+               
+        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+a*prop_EE)*beta_E_0 - a*prop_IE*beta_I_0) + Noise_E*np.sqrt(Delta_t)/tau_e
+        beta_I_Delta_t = beta_I_0 + time_I*(b*prop_EI*beta_E_0 - (d_i+b*prop_II*beta_I_0)) + Noise_I*np.sqrt(Delta_t)/tau_i
+         
+        if i>=1000:
+            beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t)
+            
+        beta_E_0 = np.copy(beta_E_Delta_t)   
+        beta_I_0 = np.copy(beta_I_Delta_t)    
+        
+    if SaveActivity==True:
+                    
+        if Filepath==' ':
+            filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
+            filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
+        else:
+            filepath=Filepath
+            
+        if not os.path.exists(filepath):
+            os.makedirs(filepath)
+            
+            #make DAT files with sim-only parameters (delta t, time, etc)
+        with h5py.File(filepath+"Beta_Activity E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
+            if "Beta_Activity" not in list(hf.keys()):
+                hf.create_dataset("Beta_Activity",  data=beta_E_total)
+            else:
+                data=hf["Beta_Activity"]
+                data[...]=beta_E_total    
+
+    return beta_E_total
+
+
+#################################################################################
+#
+# activity analysis
+#
+##################################################################################   
+def Activity_Analysis(E_total, Ess, Iss, Delta_t,
                       alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
                       sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
                       d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
@@ -294,21 +384,37 @@ def Activity_Analysis(E_total, Ess, Iss,
              
     if one_dim==True:
         s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
-        V=U.T
     else:
         s=eigvals 
-        V=eigvecs.T   
-     
-       
+        U=eigvecs       
         
-    PS = np.var(np.dot(V,E_total-Ess), axis=1)
-     
+    PS = np.var(np.dot(U.T,E_total-Ess), axis=1)
+    TPS = signal.periodogram(np.dot(U.T,E_total-Ess), fs=1/Delta_t, detrend=False,scaling='density') 
+    #TPS = np.abs(np.fft.fft(np.dot(U.T,E_total-Ess)))**2
+    
+    #full temporal spectrum
+    FTPS = np.sum(TPS[1], axis=0)
+    TPS[0]*=2*np.pi
+    #FTPS = np.sum(TPS, axis=0)
+  
+    #time_step = 0.01
+    #freqs = np.fft.fftfreq(FTPS.size, time_step)
+    #idx = np.argsort(freqs)
+
+
+
     if prediction==True:
-         PS_prediction = Graph_WC_SpatialPowerSpectrum(s, Graph_Kernel, Ess, Iss,
+         max_omega=100
+         PS_prediction = Graph_WC_Spatiotemporal_PowerSpectrum(s, Graph_Kernel, Ess, Iss,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
-                                                       sigma_noise_e, sigma_noise_i, Visual=False)
+                                                       sigma_noise_e, sigma_noise_i, max_omega,
+                                                       Spatial_Spectrum_Only=False, Visual=False)
+         predicted_PS=np.sum(PS_prediction, axis=0)
+         predicted_TPS=np.sum(PS_prediction, axis=1)
+         
+         FC = Functional_Connectivity(U, predicted_PS)
          
      
     if Visual==True:
@@ -318,9 +424,19 @@ def Activity_Analysis(E_total, Ess, Iss,
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
         
-        line2, = plt.loglog(np.arange(1,len(s)+1), PS, '-r')
+        line2, = plt.loglog(np.arange(1,len(s)+1), PS, '-r')     
         if prediction==True:
-            line1, = plt.loglog(np.arange(1,len(s)+1), PS_prediction[:,0,0], '--k')
+            line1, = plt.loglog(np.arange(1,len(s)+1), predicted_PS/(10*3.14), '--k')
+      
+        
+        fig2 = plt.figure()
+        line3, = plt.semilogx(TPS[0], FTPS, '-r')       
+        #line3, = plt.semilogx(freqs[idx], FTPS[idx])
+        
+        if prediction==True:
+            line4, = plt.semilogx(np.linspace(0,max_omega,len(predicted_TPS)),2*predicted_TPS, '-k')
+            fig3 =plt.figure
+            plt.pcolormesh(FC)
         
     if SavePSD==True:                    
         if Filepath==' ':
@@ -343,5 +459,4 @@ def Activity_Analysis(E_total, Ess, Iss,
             figpath=filepath+"PSD E0=%.5f Sim #%d.png"%(Ess, NSim)
             plt.savefig(figpath)        
         
-    return PS
-    
+    return PS, TPS, FC
