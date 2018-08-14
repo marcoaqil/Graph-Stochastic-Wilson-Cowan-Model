@@ -9,28 +9,41 @@ import os
 ####################################################################################################
 #written for python 3.6 
 
-def GraphKernel(x,t,type='Gaussian', a=1, b=1, IC=0):
+def GraphKernel(x,t,type='Gaussian', a=1, b=1, prime=False):
     if t<0:
         print("Need positive kernel parameter")
         return
     else:
         if type=='Gaussian':
-            return np.exp(-t*x)
+            #add prefactor to make kernel of unitary height
+            return np.exp(t*x)#*2*np.sqrt(t*np.pi)
         elif type=='Exponential':
-            return 2*t/(t**2+x)
+            return 2*t/(t**2-x)
         elif type=='Pyramid':
-            return t*(np.sinc(np.sqrt(t*x)))**2
+            #return t*(np.sinc(t*np.sqrt(-x)/(2*np.pi)))**2
+            return np.sinc(np.sqrt(-x)*t/(2*np.pi))**2
+        elif type=='Rectangle':   
+            #Note: significant Gibbs effect makes this not advisable
+            rect=t*(np.sinc(t*np.sqrt(-x)/(2*np.pi)))
+            #rect[-990:]=0
+            return rect
+        elif type=='Mexican Hat':
+            return -x*np.exp(t*x) #*2*np.sqrt(t*np.pi)  #*2*t  
         elif type=='Damped Wave':
             a=1
             b=1
-            r_1=(-b+sp.sqrt(b**2 - 4*a*x))/(2*a)
-            r_2=(-b-sp.sqrt(b**2 - 4*a*x))/(2*a)
+            r_1=(-b+sp.sqrt(b**2 + 4*a*x))/(2*a)
+            r_2=(-b-sp.sqrt(b**2 + 4*a*x))/(2*a)
             Damped_Wave_Kernel=(r_1*sp.exp(r_2*t)-r_2*sp.exp(r_1*t))/(r_1-r_2)
-            if np.any(Damped_Wave_Kernel.imag!=0):
+            Damped_Wave_Kernel_prime=(sp.exp(r_1*t)-sp.exp(r_2*t))/(r_1-r_2)
+            if np.any(Damped_Wave_Kernel.imag!=0) or np.any(Damped_Wave_Kernel_prime.imag!=0):
                 print("Imaginary value in kernel")
                 return
             else:
-                return Damped_Wave_Kernel.real
+                if prime==True:
+                    return Damped_Wave_Kernel.real, Damped_Wave_Kernel_prime.real
+                else:
+                    return Damped_Wave_Kernel.real
 
 
 ####################################################################################################
@@ -44,30 +57,43 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
     #AdjMatrix[0,gridsize-1]=1
     #AdjMatrix[gridsize-1,0]=1
     
+    AdjMatrix/=(h**2)
+    
     #"synapses" (nonlocal connections) 
-    for p in range(syn):        
-        k1=int(np.floor(gridsize*np.random.rand()))
-        k2=int(np.floor(gridsize*np.random.rand()))
-        AdjMatrix[k1,k2]=-1
-        AdjMatrix[k2,k1]=-1
+    if syn!=0:
+        indices1=np.arange(500,520)
+        indices2=np.arange(700,720)
+        for k1 in indices1:
+            for k2 in indices2:
+                if k1!=k2:                
+                    dist=h*np.abs(k1-k2)                
+                    AdjMatrix[k1,k2]=1/(dist**2)
+                    AdjMatrix[k2,k1]=1/(dist**2)
     
     Deg=np.sum(AdjMatrix, axis=0)
-    sqrt_Deg=np.power(Deg,-0.5)
+    #sqrt_Deg=np.power(Deg,-0.5)
     Degree_Matrix=sp.sparse.diags(Deg)
-    sqrt_Degree_Matrix=sp.sparse.diags(sqrt_Deg)
+    #sqrt_Degree_Matrix=sp.sparse.diags(sqrt_Deg)
     regLap = Degree_Matrix - sp.sparse.csc_matrix(AdjMatrix)
-    Laplacian = (sp.sparse.csc_matrix.dot(sqrt_Degree_Matrix,sp.sparse.csc_matrix.dot(regLap,sqrt_Degree_Matrix))).toarray()
+    #Laplacian = -(sp.sparse.csc_matrix.dot(sqrt_Degree_Matrix,sp.sparse.csc_matrix.dot(regLap,sqrt_Degree_Matrix))).toarray()
     #Laplacian[Laplacian>1]=1
     
     #unnormalized laplacian
-    Laplacian=regLap.toarray()
+    Laplacian=-regLap.toarray()
     
-    Laplacian/=(h**2)
+    #fig = plt.figure()
+    #plt.pcolormesh(Laplacian)
+    
+    #Laplacian/=(h**2)
     
     if vecs==False:    
-        return np.linalg.eigvalsh(Laplacian)
+        s=np.linalg.eigvalsh(Laplacian)
+        s[-1]=-np.abs(s[-1])
+        return s[::-1]
     else:
-        return np.linalg.eigh(Laplacian)
+        s,U=np.linalg.eigh(Laplacian)
+        s[-1]=-np.abs(s[-1])
+        return s[::-1], U[:,::-1]
         
 ####################################################################################################
 ####################################################################################################
@@ -245,7 +271,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                        alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1,
                        sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1,
                        tau_e=1, tau_i=1,
-                       sigma_noise_e=1, sigma_noise_i=1, max_omega=100,
+                       sigma_noise_e=1, sigma_noise_i=1, max_omega=100, delta_omega=0.1,
                        Spatial_Spectrum_Only=True, Visual=False):
     
     t_EE = (0.5*sigma_EE**2)/D
@@ -286,8 +312,9 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'r-')   
             
         return Gmatrix2                 
-    else:  
-        Full_Spectrum=np.zeros((len(eigs),1000), dtype=float)
+    else:
+        omegas=int(max_omega/delta_omega)
+        Full_Spectrum=np.zeros((len(eigs),omegas), dtype=float)
         
         Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
        
@@ -323,12 +350,19 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             fig = plt.figure()
             ax = fig.add_subplot(111)
             #ax.set_xlim(-0.1, 20000)
-            #ax.set_ylim(0, 20)
+            ax.set_ylim(omega_range[1], max_omega)
+            #########use the /2pi rescaling if want temporal frequency
+            #ax.set_ylim(omega_range[1]/(2*np.pi), max_omega/(2*np.pi))
             #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
             #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-            ax.set_xscale('log')
-            #if log axis, need to use ax.pcorlormesh...
-            ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range,Full_Spectrum.T)
+            ax.set_xscale('log')            
+            ax.set_yscale('log')
+            ax.set_xlabel("Spatial Eigenmode ($k$)")
+            ax.set_ylabel("Angular Frequency ($\omega$)")
+            ax.set_title("Spatiotemporal Power Spectrum")           
+            pc=ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range,Full_Spectrum.T)
+            fig.colorbar(pc)
+            #ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range/(2*np.pi),Full_Spectrum.T)
             
         return Full_Spectrum.T
    
@@ -337,10 +371,26 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
    
 
 
-def Functional_Connectivity(eigvecs, PS):
+def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
     U=eigvecs
     covariance = np.dot(U,np.dot(np.diag(PS),U.T))
-    FC=np.dot(np.power(np.diag(covariance),-0.5),np.dot(covariance,np.power(np.diag(covariance),-0.5)))
+    FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))
+    if Visual==True:
+        if one_dim==True:            
+            fig3 = plt.figure()
+            plt.pcolormesh(FC)
+    
+        else:
+            from plotly.offline import download_plotlyjs, init_notebook_mode,  plot
+            import plotly.graph_objs as go
+            init_notebook_mode()    
+        
+            trace1 = go.Heatmap(z=FC)           
+            data = [trace1]            
+            figz = dict(data=data)
+            plot(figz, filename='FC.html')
+        
+    
     return FC
 ####################################################################################################
 ####################################################################################################    
@@ -414,6 +464,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                                               sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
                                               tau_e, tau_i, 
                                               sigma_noise_e=1, sigma_noise_i=1,
+                                              max_omega=100, delta_omega=0.1,
                                               Spatial_Spectrum_Only=True, Visual=False)
             
             ########*******######
@@ -450,6 +501,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #ax.set_xlim(-0.1, 20000)
                     ax.set_ylim(1E-2, 1E2)
                     #line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
+                    ax.set_title("Spatial Power Spectrum")
+                    ax.set_xlabel("Spatial Eigenmode ($k$)")
                     line1, = plt.loglog(np.arange(1,len(eigs)+1),0.8*bestG[:,0,0], linewidth=2)#, 'b-')
                     line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'b--', linewidth=2)
                  
