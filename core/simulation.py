@@ -8,6 +8,7 @@ from random import gauss
 import h5py
 import timeit
 from numba import jit
+import time
 #from sympy.solvers.solveset import nonlinsolve
 #from sympy.core.symbol import symbols
 #from sympy import exp
@@ -85,8 +86,9 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
         if SaveActivity==True and i>=1000:
             u_total[:,i-1000]=np.copy(u_Delta_t)
             
-        if Visual==True:# and i%10 == 0:
+        if Visual==True and i%5 == 0:
             print(i)
+            time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
             ax.set_ylim(-0.05,1.6)

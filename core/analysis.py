@@ -2,9 +2,11 @@ import numpy as np
 import scipy as sp
 from scipy import special
 import matplotlib.pyplot as plt
+import matplotlib.colors as pltcolors
 import h5py
 import os
-
+plt.rcParams.update({'font.size': 20})
+plt.tight_layout()
 ####################################################################################################
 ####################################################################################################
 #written for python 3.6 
@@ -61,8 +63,8 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
     
     #"synapses" (nonlocal connections) 
     if syn!=0:
-        indices1=np.arange(500,520)
-        indices2=np.arange(700,720)
+        indices1=np.arange(500,500+syn)
+        indices2=np.arange(700,700+syn)
         for k1 in indices1:
             for k2 in indices2:
                 if k1!=k2:                
@@ -219,10 +221,11 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     if Visual==True:
         plt.ion()
         fig = plt.figure()
+        color=np.repeat(np.linspace(0,1,len(eigs)),2)[::-1]
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
-        plt.scatter(np.ravel(Jacobian_eigenvalues).real,np.ravel(Jacobian_eigenvalues).imag, s=2, c='black')
+        plt.scatter(np.ravel(Jacobian_eigenvalues).real,np.ravel(Jacobian_eigenvalues).imag, marker='o', s=2, c=color, cmap='nipy_spectral')#, edgecolor='black', linewidth=0.1)
     
     if np.any(Jacobian_eigenvalues.real>-0.1) or np.any(np.isnan(Jacobian_eigenvalues)):
         print("E*=%.4f, I*=%.4f: unstable"%(Ess,Iss))
@@ -359,8 +362,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             ax.set_yscale('log')
             ax.set_xlabel("Spatial Eigenmode ($k$)")
             ax.set_ylabel("Angular Frequency ($\omega$)")
-            ax.set_title("Spatiotemporal Power Spectrum")           
-            pc=ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range,Full_Spectrum.T)
+            ax.set_title("Spatiotemporal Power Spectrum")                 
+            pc=ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range,Full_Spectrum.T,norm=pltcolors.LogNorm())
             fig.colorbar(pc)
             #ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range/(2*np.pi),Full_Spectrum.T)
             
@@ -454,7 +457,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                 SStypes[ss], found_suitable, allJacEigs[ss,:,:] = GraphWC_Jacobian_TrDet(eigs, Graph_Kernel, Ess, Iss,                        
                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
-                                                 tau_e, tau_i)    
+                                                 tau_e, tau_i,True)    
                 
               
                     
