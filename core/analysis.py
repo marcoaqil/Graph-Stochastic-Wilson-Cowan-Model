@@ -32,10 +32,13 @@ def GraphKernel(x,t,type='Gaussian', a=1, b=1, prime=False):
         elif type=='Mexican Hat':
             return -x*np.exp(t*x) #*2*np.sqrt(t*np.pi)  #*2*t  
         elif type=='Damped Wave':
-            a=1
-            b=1
-            r_1=(-b+sp.sqrt(b**2 + 4*a*x))/(2*a)
-            r_2=(-b-sp.sqrt(b**2 + 4*a*x))/(2*a)
+            #make a smaller: wave travels faster
+            a=1#0.5
+            #make b larger: more diffusion
+            b=0.0001
+            c=2
+            r_1=(-b+sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
+            r_2=(-b-sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
             Damped_Wave_Kernel=(r_1*sp.exp(r_2*t)-r_2*sp.exp(r_1*t))/(r_1-r_2)
             Damped_Wave_Kernel_prime=(sp.exp(r_1*t)-sp.exp(r_2*t))/(r_1-r_2)
             if np.any(Damped_Wave_Kernel.imag!=0) or np.any(Damped_Wave_Kernel_prime.imag!=0):
@@ -90,11 +93,13 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
     
     if vecs==False:    
         s=np.linalg.eigvalsh(Laplacian)
-        s[-1]=-np.abs(s[-1])
+        s[-1]=0
         return s[::-1]
     else:
         s,U=np.linalg.eigh(Laplacian)
-        s[-1]=-np.abs(s[-1])
+        s[-1]=0
+        U[:,-1]=np.zeros(len(s))
+        #note that the vectors come out 2-normalized
         return s[::-1], U[:,::-1]
         
 ####################################################################################################

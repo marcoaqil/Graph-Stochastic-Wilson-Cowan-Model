@@ -52,7 +52,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
     u_prime = np.zeros_like(u_0)
     
     if SaveActivity==True:
-        u_total = np.zeros((len(u_0),Timesteps-1000))   
+        u_total = np.zeros((len(u_0),Timesteps))   
     
     if Visual==True:
         plt.ion()
@@ -71,7 +71,13 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
             Noise = sigma_noise * np.array([gauss(0.0, 1.0) for k in range(len(u_0))])
         else:
             Noise = 0
+        
+        
+        if SaveActivity==True:
+            u_total[:,i]=np.copy(u_0)
             
+        if i%5 == 0:
+            print(i)
         #impulse response    
         # if i==500:
         #     E_Delta_t[600:650]=0.9*np.ones(50)
@@ -83,11 +89,8 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
             u_prime=(u_Delta_t-u_0)/kernel_param
             
  
-        if SaveActivity==True and i>=1000:
-            u_total[:,i-1000]=np.copy(u_Delta_t)
             
         if Visual==True and i%5 == 0:
-            print(i)
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
