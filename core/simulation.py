@@ -94,7 +94,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
-            ax.set_ylim(-0.05,1.6)
+            ax.set_ylim(-0.05,0.1)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -106,7 +106,11 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
     if SaveActivity==True:
                     
         if Filepath==' ':
-            filepath = 'G:/Macbook Stuff/Simulation Results/'+Graph_Kernel+' Kernel Test t=%.f/'%(kernel_param)
+            if one_dim==True:
+                filepath = 'G:/Macbook Stuff/Simulation Results/1D '+Graph_Kernel+' Kernel Test t=%.f/'%(kernel_param)
+            else:
+                filepath = 'G:/Macbook Stuff/Simulation Results/'+Graph_Kernel+' Kernel Test t=%.f/'%(kernel_param)
+        
         else:
             filepath=Filepath
                         
@@ -117,7 +121,9 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
             if "Activity" not in list(hf.keys()):
                 hf.create_dataset("Activity",  data=u_total)
             else:
-                hf["Activity"]=u_total    
+                print("Warning: overwriting results of a previous simulation.")
+                del hf["Activity"]
+                hf.create_dataset("Activity",  data=u_total)    
     
     return u_Delta_t
 
@@ -306,8 +312,9 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             if "Activity" not in list(hf.keys()):
                 hf.create_dataset("Activity",  data=E_total)
             else:
-                data=hf["Activity"]
-                data[...]=E_total
+                print("Warning: overwriting results of a previous simulation.")
+                del hf["Activity"]
+                hf.create_dataset("Activity",  data=E_total) 
     
                         
     return E_total
@@ -398,8 +405,9 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             if "Beta_Activity" not in list(hf.keys()):
                 hf.create_dataset("Beta_Activity",  data=beta_E_total)
             else:
-                data=hf["Beta_Activity"]
-                data[...]=beta_E_total    
+                print("Warning: overwriting results of a previous simulation.")
+                del hf["Beta_Activity"]
+                hf.create_dataset("Beta_Activity",  data=beta_E_total)    
 
     return beta_E_total
 

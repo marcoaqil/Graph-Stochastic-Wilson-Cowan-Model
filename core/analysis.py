@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as pltcolors
 import h5py
 import os
+from scipy import sparse
 plt.rcParams.update({'font.size': 20})
 plt.tight_layout()
 ####################################################################################################
@@ -33,10 +34,10 @@ def GraphKernel(x,t,type='Gaussian', a=1, b=1, prime=False):
             return -x*np.exp(t*x) #*2*np.sqrt(t*np.pi)  #*2*t  
         elif type=='Damped Wave':
             #make a smaller: wave travels faster
-            a=1#0.5
+            a=0.3
             #make b larger: more diffusion
-            b=0.0001
-            c=2
+            b=0.001
+            c=0
             r_1=(-b+sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
             r_2=(-b-sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
             Damped_Wave_Kernel=(r_1*sp.exp(r_2*t)-r_2*sp.exp(r_1*t))/(r_1-r_2)
@@ -588,3 +589,288 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
     else:
         #case where no positive/exact solutions found (can print from SS method)
         return float('Inf')
+    
+    
+#utility functions to read data in python format from Selen's files
+def construct_fibers_from_data(filepath_data,
+                               filepath_Fibers,
+                               savefiles=True,
+                               output_filepath_fiber_edges=None,
+                               output_filepath_fiber_lengths=None,
+                               output_filepath_fiber_dist_starts=None,
+                               output_filepath_fiber_dist_ends=None,
+                               output_filepath_fiber_ends=None):
+
+    with h5py.File(filepath_Fibers, 'r') as file:
+        Fibers=[file[element][:] for element in file['fgCC']['fibers'][0]]
+        
+    with h5py.File(filepath_data, 'r') as file:    
+        AllVet=np.asarray(file['vertices']['all'])    
+        
+    
+    fiber_lengths=np.zeros(len(Fibers),dtype=float)
+    fiber_start=np.zeros((len(Fibers),3),dtype=float)
+    fiber_end=np.zeros((len(Fibers),3),dtype=float)
+    for i in range(len(Fibers)):
+        fiber_start[i] = Fibers[i][0]
+        fiber_end[i] = Fibers[i][-1]   
+        for j in range(len(Fibers[i])-1):    
+            fiber_lengths[i] += np.linalg.norm(Fibers[i][j+1]-Fibers[i][j], ord=2)
+
+    mesh_fiber_nodes = np.zeros((len(Fibers),2))
+    dist_starts=[]
+    dist_ends=[]
+    for i in range(fiber_start.shape[0]):
+        print(i)
+        dist_start=np.Inf
+        dist_end=np.Inf
+        
+        for j in range(AllVet.shape[1]):
+            dist_start_new = np.linalg.norm(AllVet[:,j] - fiber_start[i,:], ord=2)
+            dist_end_new = np.linalg.norm(AllVet[:,j] - fiber_end[i,:], ord=2)
+    
+            if dist_start_new<dist_start:
+                dist_start=dist_start_new
+                mesh_start=j
+            if dist_end_new<dist_end:  
+                dist_end=dist_end_new
+                mesh_end=j
+                
+            
+        mesh_fiber_nodes[i,0]=mesh_start
+        mesh_fiber_nodes[i,1]=mesh_end
+        dist_starts.append(dist_start)
+        dist_ends.append(dist_end)
+
+    
+    mesh_fiber_nodes=mesh_fiber_nodes.astype(int)
+    
+    if savefiles==True:                           
+        np.save(output_filepath_fiber_edges, mesh_fiber_nodes)
+        np.save(output_filepath_fiber_lengths, fiber_lengths)   
+        np.save(output_filepath_fiber_dist_starts, dist_starts)  
+        np.save(output_filepath_fiber_dist_ends, dist_ends)
+        np.save(output_filepath_fiber_ends, fiber_end)
+        return
+    else:
+        return mesh_fiber_nodes, fiber_lengths, dist_starts, dist_ends, fiber_end
+    
+    
+    
+def construct_adjacency_matrix_from_data(filepath_data,
+                                        
+                                       filepath_fiber_edges,
+                                       filepath_fiber_lengths,
+                                       filepath_fiber_ends,
+                                       
+
+                                       include_subcortex=False,
+                                       add_DTI=True,
+                                       threshold=False,
+                                       max_dist=10,
+                                       filepath_fiber_dist_starts=None,
+                                       filepath_fiber_dist_ends=None,
+                                       
+                                       visual=True,
+                                       plot_subcortex=False,
+                                       plot_DTI_edges=False
+                                       ):
+
+    with h5py.File(filepath_data, 'r') as file:
+        #print(list(file.keys()))
+
+        faces=np.asarray(file['faces']['all'], dtype=int)
+        AllVet=np.asarray(file['vertices']['all'])
+        AllVet_comp=np.asarray(file['vertices']['all'])
+                
+        if plot_subcortex==False:
+            CC = np.asarray(file['CC']['restInds'], dtype=int)
+            indices = np.array([elem[0] for elem in CC])-1
+            AllVet=AllVet[:,indices]
+    
+        
+    Xn=AllVet[0,:]
+    Yn=AllVet[1,:]
+    Zn=AllVet[2,:]
+    
+    iN=[]
+    jN=[]
+    kN=[]
+
+    mesh_adjacency = sparse.lil_matrix(np.zeros((20484,20484)))
+    
+    print("Constructing mesh adjacency matrix...")
+    for p in range(faces.shape[1]):
+        i=faces[0,p]-1
+        j=faces[1,p]-1
+        k=faces[2,p]-1
+        
+        #constructing the mesh adjacency matrix from the faces data. This still includes subcortical structures, but no DTI yet
+        #edges are weighted according to the inverse squared distance (to obtain a metric graph Laplacian)
+        mesh_adjacency[i,j]=1/np.linalg.norm(AllVet_comp[:,i] - AllVet_comp[:,j], ord=2)**2
+        mesh_adjacency[j,k]=1/np.linalg.norm(AllVet_comp[:,j] - AllVet_comp[:,k], ord=2)**2
+        mesh_adjacency[k,i]=1/np.linalg.norm(AllVet_comp[:,k] - AllVet_comp[:,i], ord=2)**2
+        mesh_adjacency[j,i]=mesh_adjacency[i,j]
+        mesh_adjacency[k,j]=mesh_adjacency[j,k]
+        mesh_adjacency[i,k]=mesh_adjacency[k,i]
+        
+        #set up mesh data for later plotting with plotly. can choose to include subcortex or not.
+        if visual==True:
+            if plot_subcortex==True:
+                iN.append(i)
+                jN.append(j)
+                kN.append(k)
+            else:
+                if i in indices and j in indices and k in indices:
+                    node1 = np.where(indices==i)
+                    node2 = np.where(indices==j)
+                    node3 = np.where(indices==k)
+                    iN.append(node1)
+                    jN.append(node2)
+                    kN.append(node3)
+    
+    #set up graph mesh edges for plotly visualization
+    if visual==True and plot_DTI_edges==False:
+        if plot_subcortex==False:
+            mesh_adjacency_no_subcortex=mesh_adjacency[:,indices]
+            mesh_adjacency_no_subcortex=mesh_adjacency_no_subcortex[indices,:]       
+            Adj_mesh=sparse.triu(mesh_adjacency_no_subcortex)
+        else:
+            Adj_mesh=sparse.triu(mesh_adjacency)
+
+        Edges_mesh=Adj_mesh.nonzero()
+        Edges_mesh_starts=Edges_mesh[0]
+        Edges_mesh_ends=Edges_mesh[1]
+
+        Xe=[]
+        Ye=[]
+        Ze=[]
+
+        for i in range(len(Edges_mesh_starts)):
+            Xe+=[AllVet[0,Edges_mesh_starts[i]],AllVet[0,Edges_mesh_ends[i]], None]# x-coordinates of edge ends
+            Ye+=[AllVet[1,Edges_mesh_starts[i]],AllVet[1,Edges_mesh_ends[i]], None]
+            Ze+=[AllVet[2,Edges_mesh_starts[i]],AllVet[2,Edges_mesh_ends[i]], None]
+        
+    
+    #previously, we calculated the 3D lengths of DTI fibers, and the nodes on the mesh nearest to each fiber beginning/end
+    #(see the relevant function "construct_fibers_from_data" for details)
+    DTI_edges=np.load(filepath_fiber_edges[0])
+    fiber_lengths=np.load(filepath_fiber_lengths[0])
+    fiber_end=np.load(filepath_fiber_ends[0])
+    
+    #also, we calculated the distance between the fiber beginning/end and the mesh.
+    #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
+    fiber_dist_starts=np.load(filepath_fiber_dist_starts[0])
+    fiber_dist_ends=np.load(filepath_fiber_dist_ends[0])
+    
+    #if threshold is set to false, simply set the maximum allowed distance to infinity s.t. all fibers are included
+    if threshold==False:
+        max_dist=np.inf
+    
+    if add_DTI==True:
+        print("Now adding DTI fibers from "+filepath_fiber_edges[0]+"...")                
+        #loop over all fibers
+        for i in range(DTI_edges.shape[0]):
+        
+            #threshold loop. trivial if threshold is set to false
+            if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
+            
+                #in some cases, the fiber's beginning and end happen on the same node. 
+                #to avoid auto-edges in the graph, we switch to the second-nearest-neighbor in those cases
+                if DTI_edges[i,1]==DTI_edges[i,0]:
+                    dist=np.inf
+#                for j in Edges_mesh_ends[np.where(Edges_mesh_starts==DTI_edges[i,0])]:
+#                    new_dist = np.linalg.norm(AllVet_comp[:,j] - fiber_end[i,:], ord=2)
+#                    if new_dist<dist:
+#                        dist=new_dist
+#                        new_end=j
+#                
+#                print(new_dist)
+#                if mesh_adjacency[DTI_edges[i,0],new_end] != 0:
+#                    print("DTI fiber %g =cortical edge?"%i)
+#                    
+#                mesh_adjacency[DTI_edges[i,0],new_end]=1/fiber_lengths[i]**2    
+#                mesh_adjacency[new_end,DTI_edges[i,0]]=1/fiber_lengths[i]**2
+                else:  
+                    #avoid double counting
+                    if mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]] == 0:
+                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=40000/fiber_lengths[i]**2    
+                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=40000/fiber_lengths[i]**2  
+
+
+
+    #Repeat for the two fiber paths, obtained from fg and fgCC datasets respectively
+    DTI_edges=np.load(filepath_fiber_edges[1])
+    fiber_lengths=np.load(filepath_fiber_lengths[1])
+    fiber_end=np.load(filepath_fiber_ends[1])
+    
+    #also, we calculated the distance between the fiber beginning/end and the mesh.
+    #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
+    fiber_dist_starts=np.load(filepath_fiber_dist_starts[1])
+    fiber_dist_ends=np.load(filepath_fiber_dist_ends[1])
+    
+    
+    if add_DTI==True:
+        print("Now adding DTI fibers from "+filepath_fiber_edges[1]+"...")                
+        #loop over all fibers
+        for i in range(DTI_edges.shape[0]):
+        
+            #threshold loop. trivial if threshold is set to false
+            if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
+            
+                #in some cases, the fiber's beginning and end happen on the same node. 
+                #to avoid auto-edges in the graph, we switch to the second-nearest-neighbor in those cases
+                if DTI_edges[i,1]==DTI_edges[i,0]:
+                    dist=np.inf
+#                for j in Edges_mesh_ends[np.where(Edges_mesh_starts==DTI_edges[i,0])]:
+#                    new_dist = np.linalg.norm(AllVet_comp[:,j] - fiber_end[i,:], ord=2)
+#                    if new_dist<dist:
+#                        dist=new_dist
+#                        new_end=j
+#                
+#                print(new_dist)
+#                if mesh_adjacency[DTI_edges[i,0],new_end] != 0:
+#                    print("DTI fiber %g =cortical edge?"%i)
+#                    
+#                mesh_adjacency[DTI_edges[i,0],new_end]=1/fiber_lengths[i]**2    
+#                mesh_adjacency[new_end,DTI_edges[i,0]]=1/fiber_lengths[i]**2
+                else:  
+                    #avoid double counting
+                    if mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]] == 0:
+                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=40000/fiber_lengths[i]**2    
+                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=40000/fiber_lengths[i]**2
+
+    
+    
+    if visual==True and plot_DTI_edges==True:
+        if plot_subcortex==False:
+            mesh_adjacency_no_subcortex=mesh_adjacency[:,indices]
+            mesh_adjacency_no_subcortex=mesh_adjacency_no_subcortex[indices,:]       
+            Adj_mesh=sparse.triu(mesh_adjacency_no_subcortex)
+        else:
+            Adj_mesh=sparse.triu(mesh_adjacency)
+
+        Edges_mesh=Adj_mesh.nonzero()
+        Edges_mesh_starts=Edges_mesh[0]
+        Edges_mesh_ends=Edges_mesh[1]
+
+        Xe=[]
+        Ye=[]
+        Ze=[]
+
+        for i in range(len(Edges_mesh_starts)):
+            Xe+=[AllVet[0,Edges_mesh_starts[i]],AllVet[0,Edges_mesh_ends[i]], None]# x-coordinates of edge ends
+            Ye+=[AllVet[1,Edges_mesh_starts[i]],AllVet[1,Edges_mesh_ends[i]], None]
+            Ze+=[AllVet[2,Edges_mesh_starts[i]],AllVet[2,Edges_mesh_ends[i]], None]
+        
+    
+    
+    #only cortical nodes and edges in output
+    if include_subcortex==False:
+        mesh_adjacency=mesh_adjacency[indices,:]
+        mesh_adjacency=mesh_adjacency[:,indices]
+    
+    if visual==True:
+        return mesh_adjacency, Xn, Yn, Zn, iN, jN, kN,  Xe, Ye, Ze 
+    else:
+        return mesh_adjacency
