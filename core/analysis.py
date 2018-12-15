@@ -12,7 +12,7 @@ plt.tight_layout()
 ####################################################################################################
 #written for python 3.6 
 
-def GraphKernel(x,t,type='Gaussian', a=1, b=1, prime=False):
+def GraphKernel(x,t,type='Gaussian', a=1, b=1, c=1, prime=False):
     if t<0:
         print("Need positive kernel parameter")
         return
@@ -33,11 +33,6 @@ def GraphKernel(x,t,type='Gaussian', a=1, b=1, prime=False):
         elif type=='Mexican Hat':
             return -x*np.exp(t*x) #*2*np.sqrt(t*np.pi)  #*2*t  
         elif type=='Damped Wave':
-            #make a smaller: wave travels faster
-            a=0.3
-            #make b larger: more diffusion
-            b=0.001
-            c=0
             r_1=(-b+sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
             r_2=(-b-sp.sqrt(b**2 + 4*a*(x-c)))/(2*a)
             Damped_Wave_Kernel=(r_1*sp.exp(r_2*t)-r_2*sp.exp(r_1*t))/(r_1-r_2)
@@ -600,14 +595,15 @@ def construct_fibers_from_data(filepath_data,
                                output_filepath_fiber_dist_starts=None,
                                output_filepath_fiber_dist_ends=None,
                                output_filepath_fiber_ends=None):
-
+    
+    #important: this sets which fiber dataset is used for computation of edges
     with h5py.File(filepath_Fibers, 'r') as file:
-        Fibers=[file[element][:] for element in file['fgCC']['fibers'][0]]
+        Fibers=[file[element][:] for element in file['fg']['fibers'][0]]
         
     with h5py.File(filepath_data, 'r') as file:    
         AllVet=np.asarray(file['vertices']['all'])    
         
-    
+     
     fiber_lengths=np.zeros(len(Fibers),dtype=float)
     fiber_start=np.zeros((len(Fibers),3),dtype=float)
     fiber_end=np.zeros((len(Fibers),3),dtype=float)
@@ -616,18 +612,28 @@ def construct_fibers_from_data(filepath_data,
         fiber_end[i] = Fibers[i][-1]   
         for j in range(len(Fibers[i])-1):    
             fiber_lengths[i] += np.linalg.norm(Fibers[i][j+1]-Fibers[i][j], ord=2)
-
-    mesh_fiber_nodes = np.zeros((len(Fibers),2))
+            
+    #create bundles instead of single edges
+    bundle_size=7
+    mesh_fiber_nodes = np.zeros((len(Fibers),2,bundle_size))
+    
     dist_starts=[]
     dist_ends=[]
+    
     for i in range(fiber_start.shape[0]):
         print(i)
         dist_start=np.Inf
         dist_end=np.Inf
         
+        all_dists_end=[]
+        all_dists_start=[]
+        
         for j in range(AllVet.shape[1]):
             dist_start_new = np.linalg.norm(AllVet[:,j] - fiber_start[i,:], ord=2)
             dist_end_new = np.linalg.norm(AllVet[:,j] - fiber_end[i,:], ord=2)
+            
+            all_dists_end.append(dist_end_new)
+            all_dists_start.append(dist_start_new)
     
             if dist_start_new<dist_start:
                 dist_start=dist_start_new
@@ -635,10 +641,16 @@ def construct_fibers_from_data(filepath_data,
             if dist_end_new<dist_end:  
                 dist_end=dist_end_new
                 mesh_end=j
-                
-            
-        mesh_fiber_nodes[i,0]=mesh_start
-        mesh_fiber_nodes[i,1]=mesh_end
+        
+        #create fiber bundles instead of just fiber edges
+        idx_start=np.argpartition(np.array(all_dists_start), bundle_size)[:bundle_size]
+        idx_end=np.argpartition(np.array(all_dists_end), bundle_size)[:bundle_size]
+        
+        if mesh_start not in idx_start or mesh_end not in idx_end:
+            print("sanity check failed. double check")
+                   
+        mesh_fiber_nodes[i,0,:]=idx_start#mesh_start
+        mesh_fiber_nodes[i,1,:]=idx_end#mesh_end
         dist_starts.append(dist_start)
         dist_ends.append(dist_end)
 
@@ -756,7 +768,7 @@ def construct_adjacency_matrix_from_data(filepath_data,
     #(see the relevant function "construct_fibers_from_data" for details)
     DTI_edges=np.load(filepath_fiber_edges[0])
     fiber_lengths=np.load(filepath_fiber_lengths[0])
-    fiber_end=np.load(filepath_fiber_ends[0])
+    #fiber_end=np.load(filepath_fiber_ends[0])
     
     #also, we calculated the distance between the fiber beginning/end and the mesh.
     #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
@@ -768,41 +780,34 @@ def construct_adjacency_matrix_from_data(filepath_data,
         max_dist=np.inf
     
     if add_DTI==True:
+        fiber_speed_factor=100
         print("Now adding DTI fibers from "+filepath_fiber_edges[0]+"...")                
         #loop over all fibers
-        for i in range(DTI_edges.shape[0]):
-        
+        for i in range(DTI_edges.shape[0]):      
             #threshold loop. trivial if threshold is set to false
             if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
-            
-                #in some cases, the fiber's beginning and end happen on the same node. 
-                #to avoid auto-edges in the graph, we switch to the second-nearest-neighbor in those cases
-                if DTI_edges[i,1]==DTI_edges[i,0]:
-                    dist=np.inf
-#                for j in Edges_mesh_ends[np.where(Edges_mesh_starts==DTI_edges[i,0])]:
-#                    new_dist = np.linalg.norm(AllVet_comp[:,j] - fiber_end[i,:], ord=2)
-#                    if new_dist<dist:
-#                        dist=new_dist
-#                        new_end=j
-#                
-#                print(new_dist)
-#                if mesh_adjacency[DTI_edges[i,0],new_end] != 0:
-#                    print("DTI fiber %g =cortical edge?"%i)
-#                    
-#                mesh_adjacency[DTI_edges[i,0],new_end]=1/fiber_lengths[i]**2    
-#                mesh_adjacency[new_end,DTI_edges[i,0]]=1/fiber_lengths[i]**2
-                else:  
-                    #avoid double counting
-                    if mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]] == 0:
-                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=40000/fiber_lengths[i]**2    
-                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=40000/fiber_lengths[i]**2  
-
+                #fibers vs bundles
+                if DTI_edges.shape[-1]>2:
+                    #avoid auto-edges in the graph
+                    if np.any(DTI_edges[i,0,:] in DTI_edges[i,1,:]):
+                        print("Degenerate fiber. Skipping.")
+                    else:
+                        #create all-to-all bundles
+                        for j in range(DTI_edges.shape[-1]):                            
+                            mesh_adjacency[DTI_edges[i,0,j],DTI_edges[i,1,:]]=np.ones(DTI_edges.shape[-1])*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                            mesh_adjacency[DTI_edges[i,1,:],DTI_edges[i,0,j]]=np.ones((DTI_edges.shape[-1],1))*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2  
+                else:
+                    #fiber edges not bundles
+                    #avoid auto edges
+                    if DTI_edges[i,1]!=DTI_edges[i,0]:
+                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2 
 
 
     #Repeat for the two fiber paths, obtained from fg and fgCC datasets respectively
     DTI_edges=np.load(filepath_fiber_edges[1])
     fiber_lengths=np.load(filepath_fiber_lengths[1])
-    fiber_end=np.load(filepath_fiber_ends[1])
+    #fiber_end=np.load(filepath_fiber_ends[1])
     
     #also, we calculated the distance between the fiber beginning/end and the mesh.
     #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
@@ -811,36 +816,30 @@ def construct_adjacency_matrix_from_data(filepath_data,
     
     
     if add_DTI==True:
+        fiber_speed_factor=100
         print("Now adding DTI fibers from "+filepath_fiber_edges[1]+"...")                
         #loop over all fibers
-        for i in range(DTI_edges.shape[0]):
-        
+        for i in range(DTI_edges.shape[0]):      
             #threshold loop. trivial if threshold is set to false
             if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
-            
-                #in some cases, the fiber's beginning and end happen on the same node. 
-                #to avoid auto-edges in the graph, we switch to the second-nearest-neighbor in those cases
-                if DTI_edges[i,1]==DTI_edges[i,0]:
-                    dist=np.inf
-#                for j in Edges_mesh_ends[np.where(Edges_mesh_starts==DTI_edges[i,0])]:
-#                    new_dist = np.linalg.norm(AllVet_comp[:,j] - fiber_end[i,:], ord=2)
-#                    if new_dist<dist:
-#                        dist=new_dist
-#                        new_end=j
-#                
-#                print(new_dist)
-#                if mesh_adjacency[DTI_edges[i,0],new_end] != 0:
-#                    print("DTI fiber %g =cortical edge?"%i)
-#                    
-#                mesh_adjacency[DTI_edges[i,0],new_end]=1/fiber_lengths[i]**2    
-#                mesh_adjacency[new_end,DTI_edges[i,0]]=1/fiber_lengths[i]**2
-                else:  
-                    #avoid double counting
-                    if mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]] == 0:
-                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=40000/fiber_lengths[i]**2    
-                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=40000/fiber_lengths[i]**2
+                #fibers vs bundles
+                if DTI_edges.shape[-1]>2:
+                    #avoid auto-edges in the graph
+                    if np.any(DTI_edges[i,0,:] in DTI_edges[i,1,:]):
+                        print("Degenerate fiber. Skipping.")
+                    else:
+                        #create all-to-all bundles
+                        for j in range(DTI_edges.shape[-1]):                            
+                            mesh_adjacency[DTI_edges[i,0,j],DTI_edges[i,1,:]]=np.ones(DTI_edges.shape[-1])*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                            mesh_adjacency[DTI_edges[i,1,:],DTI_edges[i,0,j]]=np.ones((DTI_edges.shape[-1],1))*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2  
+                else:
+                    #fiber edges not bundles
+                    #avoid auto edges
+                    if DTI_edges[i,1]!=DTI_edges[i,0]:
+                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2 
 
-    
+
     
     if visual==True and plot_DTI_edges==True:
         if plot_subcortex==False:

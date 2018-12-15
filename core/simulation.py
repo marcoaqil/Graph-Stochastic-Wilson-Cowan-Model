@@ -25,7 +25,7 @@ from analysis import *
 #testing any time-evolution propagator defined by a kernel on the graph
 ####################################################################################################   
 
-def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_noise=0,
+def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b=1, c=1, sigma_noise=0,
                           one_dim=False, syn=0, gridsize=1000,  h=0.01, eigvals=None, eigvecs=None,                         
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
        
@@ -41,7 +41,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, sigma_
         kernel_matrix=sp.sparse.diags(GraphKernel(s,kernel_param, type=Graph_Kernel)).toarray()
         Laplacian_based_propagator = np.dot(U, np.dot(kernel_matrix, U.T))
     else:
-        kernel_matrix, kernel_matrix_prime=GraphKernel(s,kernel_param, type=Graph_Kernel, prime=True)
+        kernel_matrix, kernel_matrix_prime=GraphKernel(s,kernel_param, type=Graph_Kernel, a=a, b=b, c=c, prime=True)
         Laplacian_based_propagator = np.dot(U, np.dot(sp.sparse.diags(kernel_matrix).toarray(), U.T))
         Laplacian_based_propagator_prime = np.dot(U, np.dot(sp.sparse.diags(kernel_matrix_prime).toarray(), U.T))
 
