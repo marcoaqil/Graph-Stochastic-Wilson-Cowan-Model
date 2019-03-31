@@ -106,24 +106,19 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
 #thresholding unique steady state if norm(x1-x2)<0.01    
 def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1, P=0, Q=0):
     #generate multiple initial conditions to find all steady states
-    initial_guesses = 10
+    initial_guesses = 5
     #print("%.3g %.3g %.3g %.3g %.3g %.3g %.3g %.3g"%(alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i, P, Q))
 
     x0 = np.zeros((2,initial_guesses))
     x0[:,1] = np.array([1/(2*d_e), 1/(2*d_i)])
     x0[:,2] = np.random.rand(2)
     x0[:,3] = np.random.rand(2)
-    x0[:,4] = 5*np.random.rand(2)
-    x0[:,5] = 10*np.random.rand(2)
-    x0[:,6] = np.ones(2)
-    x0[:,7] = 2*np.random.rand(2)
-    x0[:,8] = 20*np.random.rand(2)
-    x0[:,9] = 20*np.ones(2)
+    x0[:,4] = np.random.rand(2)
     
     success = False
     results = np.zeros((2,initial_guesses))
     
-    def f(x, alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i):       
+    def f(x, alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i, P, Q):       
         d = np.array([[d_e,0],[0,d_i]], dtype=float)
         alpha = np.array([[alpha_EE,-alpha_IE],[alpha_EI,-alpha_II]], dtype=float)
         X = np.array([P,Q], dtype=float)
@@ -132,7 +127,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
         return SS_EQ
     
     for i in range(initial_guesses):
-        steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i),
+        steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i,P,Q),
                                           #xtol=1e-9, 
                                           full_output=True) 
         
@@ -147,11 +142,12 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     
     #select and importantly sort the unique, acceptable results
     if success==True:
+
         results = results[:,~np.all(np.isnan(results), axis=0)]    
         uniques = np.unique(results, axis=1)
         
         #Further routine to select unique steady states up to some user-specified numerical tolerance   
-        tolerance=0.01
+        tolerance=0.001
         p=0
         countSS=1
         countoccurr=1
@@ -318,6 +314,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         return Gmatrix2                 
     else:
         omegas=int(max_omega/delta_omega)
+        #print(omegas)
         Full_Spectrum=np.zeros((len(eigs),omegas), dtype=float)
         
         Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
@@ -402,7 +399,8 @@ def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
 #Loop for all semi-analytic calculations given parameter set and eigenvalues: HSS, LSA, PSD
 ####################################################################################################    
 
-def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum, first_k=2, LSA=True, Visual=False, SaveFiles=False, Filepath=' '):
+def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal_Spectrum=None, max_omega=300, delta_omega=0.5,
+                  True_Spatial_Spectrum=None, first_k=2, LSA=True, Visual=False, SaveFiles=False, Filepath=' '):
    
     alpha_EE=Parameters[0]
     alpha_IE=Parameters[1]
@@ -430,7 +428,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
     
     eigs=Laplacian_eigenvalues
     
-    last_k=first_k+len(True_Spectrum)
+    if True_Spatial_Spectrum is not None:
+        last_k=first_k+len(True_Spatial_Spectrum)
     
     success = False
     #beginning of calculations
@@ -439,13 +438,22 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
     
     if success==True:
         nrSS=len(steady_states[0])
-        #distance between eachSS power spectrum and true
-        Dist=np.zeros(nrSS)
-        scale_params=np.zeros(nrSS)
+
         #see linear stability analysis method for types
         SStypes=np.zeros(nrSS)
         
-        allG = np.empty((nrSS,len(eigs),2,2), dtype=float)
+       
+        all_spatial_spectra = np.empty((nrSS,len(eigs),2,2), dtype=float)
+        #distance between eachSS power spectrum and true
+        dist_spatial=np.zeros(nrSS)
+        scale_params_spatial=np.zeros(nrSS)
+            
+
+        all_temporal_spectra = np.empty((nrSS,int(max_omega/delta_omega)), dtype=float)
+        dist_temporal=np.zeros(nrSS)
+        scale_params_temporal=np.zeros(nrSS)
+            
+            
         allJacEigs = np.empty((nrSS, len(eigs), 2), dtype=complex)
         
         for ss in range(len(steady_states[0])):
@@ -458,37 +466,78 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                 SStypes[ss], found_suitable, allJacEigs[ss,:,:] = GraphWC_Jacobian_TrDet(eigs, Graph_Kernel, Ess, Iss,                        
                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
-                                                 tau_e, tau_i,True)    
+                                                 tau_e, tau_i,False)    
                 
-              
+        
+        
+        if np.any(SStypes!=0):  
+
+            for ss in range(len(steady_states[0])):
+                
+                Ess = steady_states[0,ss]
+                Iss = steady_states[1,ss]               
+                        
+                if True_Spatial_Spectrum is not None:
+                    all_spatial_spectra[ss,:,:,:] = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
+                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
+                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
+                                                  tau_e, tau_i, 
+                                                  sigma_noise_e=1, sigma_noise_i=1,
+                                                  max_omega=max_omega, delta_omega=delta_omega,
+                                                  Spatial_Spectrum_Only=True, Visual=False)
                     
-            
-            allG[ss,:,:,:] = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
-                                              alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
-                                              sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
-                                              tau_e, tau_i, 
-                                              sigma_noise_e=1, sigma_noise_i=1,
-                                              max_omega=100, delta_omega=0.1,
-                                              Spatial_Spectrum_Only=True, Visual=False)
-            
+                    scale_params_spatial[ss] = np.dot(True_Spatial_Spectrum,all_spatial_spectra[ss,first_k:last_k,0,0])/(np.linalg.norm(all_spatial_spectra[ss,first_k:last_k,0,0], ord=2))**2            
+                
+                    dist_spatial[ss] = np.linalg.norm(True_Spatial_Spectrum - scale_params_spatial[ss] * all_spatial_spectra[ss,first_k:last_k,0,0], ord=2)
+                    
+                    
+                    
+                if True_Temporal_Spectrum is not None:
+                    Spectrum = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
+                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
+                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
+                                                  tau_e, tau_i, 
+                                                  sigma_noise_e=1, sigma_noise_i=1,
+                                                  max_omega=max_omega, delta_omega=delta_omega,
+                                                  Spatial_Spectrum_Only=False, Visual=False)
+                    
+                    all_temporal_spectra[ss,:] = 2*np.sum(Spectrum,axis=1)
+                    
+                    scale_params_temporal[ss] = np.mean(True_Temporal_Spectrum-all_temporal_spectra[ss,:])#np.dot(True_Temporal_Spectrum,all_temporal_spectra[ss,:])/(np.linalg.norm(all_temporal_spectra[ss,:], ord=2))**2            
+                    
+                    dist_temporal[ss] = np.linalg.norm(True_Temporal_Spectrum - scale_params_temporal[ss] - all_temporal_spectra[ss,:], ord=2)
+                   
+                    
+                
             ########*******######
             #important: insert here a metric to quantify distance between true spectrum and calculated
             ######****######
             #Dist[ss] = np.max(np.abs(G[first_k:last_k,0,0]- True_Spectrum))
-            scale_params[ss] = np.dot(True_Spectrum,allG[ss,first_k:last_k,0,0])/(np.linalg.norm(allG[ss,first_k:last_k,0,0], ord=2))**2            
             
-            Dist[ss] = np.linalg.norm(True_Spectrum - scale_params[ss] * allG[ss,first_k:last_k,0,0], ord=2)
             #Dist[ss] = -stats.ks_2samp( Gmatrix[first_k:last_k,0,0], True_Spectrum )[1]
         
-        if np.any(SStypes!=0):    
+
             
-            mask = np.argwhere(SStypes!=0)       
+            mask = np.argwhere(SStypes!=0)  
+            #define total distance from goal spectrum
+            Dist=dist_temporal**2+dist_spatial
+            
             if ~np.all(np.isnan(Dist[mask])):
                 bestSSS = mask[np.nanargmin(Dist[mask])][0]
                 minDist=Dist[bestSSS]
-                scale_param=scale_params[bestSSS]
-                print("Best suitable steady state: %d, with Ess=%.4f Iss=%.4f, Distance: %.4f, Scale: %.4f"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], minDist, scale_param))
-                bestG=scale_param * allG[bestSSS,:,:,:]
+                 
+                if True_Spatial_Spectrum is not None:
+                    best_spatial_spectrum = scale_params_spatial[bestSSS] * all_spatial_spectra[bestSSS,:,:,:]
+                
+                if True_Temporal_Spectrum is not None:
+                    best_temporal_spectrum = scale_params_temporal[bestSSS] + all_temporal_spectra[bestSSS,:]
+
+
+                    
+                    
+                    
+                print("Best suitable steady state: %d, with Ess=%.4f Iss=%.4f, Dist spatial: %.4f, scale: %.4f. Dist temporal: %.4f, scale: %.4f"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], dist_spatial[bestSSS], scale_params_spatial[bestSSS], dist_temporal[bestSSS], scale_params_temporal[bestSSS]))
+
                 
                 
                     
@@ -500,6 +549,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #ax.set_xlim(-0.1, 20000)
                     #ax.set_ylim(0, 20)
                     plt.scatter(np.ravel(allJacEigs[bestSSS,:,:]).real,np.ravel(allJacEigs[bestSSS,:,:]).imag, s=2, c='black')                   
+                    
+                    
                     fig = plt.figure()
                     ax = fig.add_subplot(111)
                     #ax.set_xlim(-0.1, 20000)
@@ -507,8 +558,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                     #line2, = plt.loglog(np.arange(1,len(eigs)+1),bestG[:,1,1], 'b-')
                     ax.set_title("Spatial Power Spectrum")
                     ax.set_xlabel("Spatial Eigenmode ($k$)")
-                    line1, = plt.loglog(np.arange(1,len(eigs)+1),0.8*bestG[:,0,0], linewidth=2)#, 'b-')
-                    line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spectrum, 'b--', linewidth=2)
+                    line1, = plt.loglog(np.arange(1,len(eigs)+1),0.8*best_spatial_spectrum[:,0,0], linewidth=2)#, 'b-')
+                    line3, = plt.loglog(np.arange(first_k+1,last_k+1),True_Spatial_Spectrum, 'b--', linewidth=2)
                  
                   
                     
@@ -575,11 +626,13 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
                                    
                 return minDist
             else:
+                #nans in spectra
                 print("Unrealistic spectra")
                 return float('Inf')
         else:
+            #all unstable SS
             print("No suitable (LSA) steady states found")
-            return float('Inf')
+            return 1000000.0#float('Inf')
     
     else:
         #case where no positive/exact solutions found (can print from SS method)
@@ -590,6 +643,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Spectrum
 def construct_fibers_from_data(filepath_data,
                                filepath_Fibers,
                                savefiles=True,
+                               bundle_size=1,
                                output_filepath_fiber_edges=None,
                                output_filepath_fiber_lengths=None,
                                output_filepath_fiber_dist_starts=None,
@@ -613,8 +667,8 @@ def construct_fibers_from_data(filepath_data,
         for j in range(len(Fibers[i])-1):    
             fiber_lengths[i] += np.linalg.norm(Fibers[i][j+1]-Fibers[i][j], ord=2)
             
-    #create bundles instead of single edges
-    bundle_size=7
+    #can also create bundles instead of single edges if bundle_size>1
+    
     mesh_fiber_nodes = np.zeros((len(Fibers),2,bundle_size))
     
     dist_starts=[]
@@ -678,6 +732,7 @@ def construct_adjacency_matrix_from_data(filepath_data,
 
                                        include_subcortex=False,
                                        add_DTI=True,
+                                       fiber_speed_factor=100,
                                        threshold=False,
                                        max_dist=10,
                                        filepath_fiber_dist_starts=None,
@@ -780,7 +835,6 @@ def construct_adjacency_matrix_from_data(filepath_data,
         max_dist=np.inf
     
     if add_DTI==True:
-        fiber_speed_factor=100
         print("Now adding DTI fibers from "+filepath_fiber_edges[0]+"...")                
         #loop over all fibers
         for i in range(DTI_edges.shape[0]):      
@@ -803,42 +857,42 @@ def construct_adjacency_matrix_from_data(filepath_data,
                         mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
                         mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2 
 
-
-    #Repeat for the two fiber paths, obtained from fg and fgCC datasets respectively
-    DTI_edges=np.load(filepath_fiber_edges[1])
-    fiber_lengths=np.load(filepath_fiber_lengths[1])
-    #fiber_end=np.load(filepath_fiber_ends[1])
     
-    #also, we calculated the distance between the fiber beginning/end and the mesh.
-    #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
-    fiber_dist_starts=np.load(filepath_fiber_dist_starts[1])
-    fiber_dist_ends=np.load(filepath_fiber_dist_ends[1])
-    
-    
-    if add_DTI==True:
-        fiber_speed_factor=100
-        print("Now adding DTI fibers from "+filepath_fiber_edges[1]+"...")                
-        #loop over all fibers
-        for i in range(DTI_edges.shape[0]):      
-            #threshold loop. trivial if threshold is set to false
-            if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
-                #fibers vs bundles
-                if DTI_edges.shape[-1]>2:
-                    #avoid auto-edges in the graph
-                    if np.any(DTI_edges[i,0,:] in DTI_edges[i,1,:]):
-                        print("Degenerate fiber. Skipping.")
+    if len(filepath_fiber_edges)>1:
+        #Repeat for the two fiber paths, obtained from fg and fgCC datasets respectively
+        DTI_edges=np.load(filepath_fiber_edges[1])
+        fiber_lengths=np.load(filepath_fiber_lengths[1])
+        #fiber_end=np.load(filepath_fiber_ends[1])
+        
+        #also, we calculated the distance between the fiber beginning/end and the mesh.
+        #this data can be read and used to apply a threshold to the fibers based on the distance from the mesh.
+        fiber_dist_starts=np.load(filepath_fiber_dist_starts[1])
+        fiber_dist_ends=np.load(filepath_fiber_dist_ends[1])
+        
+        
+        if add_DTI==True:
+            print("Now adding DTI fibers from "+filepath_fiber_edges[1]+"...")                
+            #loop over all fibers
+            for i in range(DTI_edges.shape[0]):      
+                #threshold loop. trivial if threshold is set to false
+                if fiber_dist_starts[i]<=max_dist and fiber_dist_ends[i]<=max_dist:
+                    #fibers vs bundles
+                    if DTI_edges.shape[-1]>2:
+                        #avoid auto-edges in the graph
+                        if np.any(DTI_edges[i,0,:] in DTI_edges[i,1,:]):
+                            print("Degenerate fiber. Skipping.")
+                        else:
+                            #create all-to-all bundles
+                            for j in range(DTI_edges.shape[-1]):                            
+                                mesh_adjacency[DTI_edges[i,0,j],DTI_edges[i,1,:]]=np.ones(DTI_edges.shape[-1])*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                                mesh_adjacency[DTI_edges[i,1,:],DTI_edges[i,0,j]]=np.ones((DTI_edges.shape[-1],1))*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2  
                     else:
-                        #create all-to-all bundles
-                        for j in range(DTI_edges.shape[-1]):                            
-                            mesh_adjacency[DTI_edges[i,0,j],DTI_edges[i,1,:]]=np.ones(DTI_edges.shape[-1])*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
-                            mesh_adjacency[DTI_edges[i,1,:],DTI_edges[i,0,j]]=np.ones((DTI_edges.shape[-1],1))*(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2  
-                else:
-                    #fiber edges not bundles
-                    #avoid auto edges
-                    if DTI_edges[i,1]!=DTI_edges[i,0]:
-                        mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
-                        mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2 
-
+                        #fiber edges not bundles
+                        #avoid auto edges
+                        if DTI_edges[i,1]!=DTI_edges[i,0]:
+                            mesh_adjacency[DTI_edges[i,0],DTI_edges[i,1]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2    
+                            mesh_adjacency[DTI_edges[i,1],DTI_edges[i,0]]=(fiber_speed_factor/(fiber_lengths[i]+fiber_dist_starts[i]+fiber_dist_ends[i]))**2 
+    
 
     
     if visual==True and plot_DTI_edges==True:

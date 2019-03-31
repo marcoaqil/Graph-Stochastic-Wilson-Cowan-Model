@@ -257,6 +257,11 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         ax.plot(E_0, 'r-')
         fig.canvas.draw()
     
+    numerical_SS = True
+    
+    if numerical_SS == True:
+        Ess_numerical=[]
+        Iss_numerical=[]
     
     for i in range(Timesteps):
         if sigma_noise_e!=0 or sigma_noise_i!=0:
@@ -275,15 +280,20 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0, Delta_t,
                            propagator_EE, propagator_IE, propagator_EI, propagator_II, 
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
+        
+        
          
         if i>=1000:
             E_total[:,i-1000]=np.copy(E_Delta_t)
+            if numerical_SS == True:
+                Ess_numerical.append(np.mean(E_Delta_t))
+                Iss_numerical.append(np.mean(I_Delta_t))
             
 
         if Visual==True and i%10 == 0:
             print(i)
             ax.clear()
-            ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
+            #ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(I_Delta_t, 'b-')
@@ -315,8 +325,11 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                 print("Warning: overwriting results of a previous simulation.")
                 del hf["Activity"]
                 hf.create_dataset("Activity",  data=E_total) 
-    
-                        
+                
+    if numerical_SS==True:
+        print(np.mean(np.array(Ess_numerical)))
+        print(np.mean(np.array(Iss_numerical)))     
+                
     return E_total
 
 #################################################################################
@@ -447,7 +460,7 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
     else:
         beta_E_total[0] = beta_E_total[0] - np.dot(U.T[0],Ess*np.ones(len(s)))
         beta_activity = beta_E_total
-        activity = np.dot(U,beta_activity)
+        #activity = np.dot(U,beta_activity)
         
     PS = np.var(beta_activity, axis=1)
     print("Simulation SPS obtained.")
@@ -464,19 +477,24 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
     #time_step = 0.01
     #freqs = np.fft.fftfreq(FTPS.size, time_step)
     #idx = np.argsort(freqs)
+    HRF=False
     
-    def hrf(t):
-        "A hemodynamic response function"
-        k=1
-        return (k*t) ** 8.6 * np.exp(-(k*t) / 0.547)
-
-    hrf_times = np.arange(0, 20, 0.1)
-    hrf_signal=hrf(hrf_times)
-    for ts in range(np.shape(activity)[1]):
-        activity[:,ts]=np.convolve(activity[:,ts],hrf_signal,mode='same')
-        
-    covariance = np.cov(activity)
-    FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))    
+    if HRF==True:
+    
+        def hrf(t):
+            "A simple hemodynamic response function"
+            k=1
+            return (k*t) ** 8.6 * np.exp(-(k*t) / 0.547)
+    
+        hrf_times = np.arange(0, 20, 0.1)
+        hrf_signal=hrf(hrf_times)
+        for ts in range(np.shape(activity)[1]):
+            activity[:,ts]=np.convolve(activity[:,ts],hrf_signal,mode='same')
+ 
+    if beta==False:   
+        covariance = np.cov(activity)
+        FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))    
+    
     print("All simulation activity measures completed.")
     if prediction==True:
          print("Obtaining analytic predictions...")
@@ -490,7 +508,8 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
          predicted_PS=delta_omega*np.sum(PS_prediction, axis=0)/np.pi
          predicted_TPS=2*np.sum(PS_prediction, axis=1)
          
-         predicted_FC = Functional_Connectivity(U, predicted_PS, False, False)
+         if beta==False:
+             predicted_FC = Functional_Connectivity(U, predicted_PS, False, False)
          
      
     if Visual==True:
@@ -507,7 +526,7 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
         
-        line2, = plt.loglog(np.arange(1,len(s)+1), PS, '-r')     
+        line2, = plt.loglog(np.arange(1,len(PS)+1), PS, '-r')     
         if prediction==True:
             line1, = plt.loglog(np.arange(1,len(s)+1), predicted_PS, '--k')
         if Save_Results==True:    
@@ -517,11 +536,11 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
         ax = fig2.add_subplot(111)
         ax.set_xlabel("Angular Frequency ($\omega$)")
         ax.set_title("Temporal Power Spectrum")
-        line3, = plt.semilogx(frequencies, FTPS, '-r')       
+        line3, = plt.plot(frequencies, FTPS, '-r')       
         #line3, = plt.semilogx(freqs[idx], FTPS[idx])
         
         if prediction==True:
-            line4, = plt.semilogx(np.arange(0,max_omega,delta_omega),predicted_TPS, '--k')
+            line4, = plt.plot(np.arange(0,max_omega,delta_omega),predicted_TPS, '--k')
         if Save_Results==True:    
             plt.savefig(figpath2)
         
@@ -559,5 +578,7 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
                 del hf["PSD"]
                 hf.create_dataset("PSD",  data=PS)
                 
-        
-    return PS, TPS, FC
+    if beta==False:
+        return PS, TPS, FC
+    else:    
+        return PS, TPS
