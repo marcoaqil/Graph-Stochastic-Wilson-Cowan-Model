@@ -354,19 +354,17 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
    
     if one_dim==True:
-        s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+        s = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=False)
     else:
         s=eigvals
-        U=eigvecs
     
     beta_E_0 = np.zeros(len(s))
     beta_I_0 = np.zeros(len(s))
     
-    beta_Ess = np.dot(U.T[0], Ess*np.ones(len(s)))
-    beta_Iss = np.dot(U.T[0], Iss*np.ones(len(s)))
-    
-    beta_E_0[0] = beta_Ess
-    beta_I_0[0] = beta_Iss    
+    #Fourier transform of a constant SHOULD be an impulse function with amplitude value the constant itself
+    #seems to work best by keeping all zeros?
+    #beta_E_0[0] = Ess
+    #beta_I_0[0] = Iss    
             
     prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)
     prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)
@@ -385,6 +383,8 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     for i in range(Timesteps):
         if Visual==True and i%10 == 0:
             print(i)
+            print(beta_E_0[0])
+            print(beta_I_0[0])
             
         if sigma_noise_e!=0 or sigma_noise_i!=0:
             Noise_E = sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])
@@ -458,7 +458,7 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
         activity = E_total-Ess
         beta_activity = np.dot(U.T,activity)
     else:
-        beta_E_total[0] = beta_E_total[0] - np.dot(U.T[0],Ess*np.ones(len(s)))
+        #beta_E_total[0] = beta_E_total[0] - Ess   #np.dot(U.T[0],Ess*np.ones(len(s)))
         beta_activity = beta_E_total
         #activity = np.dot(U,beta_activity)
         
@@ -536,11 +536,11 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
         ax = fig2.add_subplot(111)
         ax.set_xlabel("Angular Frequency ($\omega$)")
         ax.set_title("Temporal Power Spectrum")
-        line3, = plt.plot(frequencies, FTPS, '-r')       
+        line3, = plt.semilogx(frequencies, FTPS, '-r')       
         #line3, = plt.semilogx(freqs[idx], FTPS[idx])
         
         if prediction==True:
-            line4, = plt.plot(np.arange(0,max_omega,delta_omega),predicted_TPS, '--k')
+            line4, = plt.semilogx(np.arange(0,max_omega,delta_omega),predicted_TPS, '--k')
         if Save_Results==True:    
             plt.savefig(figpath2)
         

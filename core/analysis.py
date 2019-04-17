@@ -90,12 +90,20 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
     if vecs==False:    
         s=np.linalg.eigvalsh(Laplacian)
         s[-1]=0
+        s[-1]=-np.abs(s[-1])
         return s[::-1]
     else:
         s,U=np.linalg.eigh(Laplacian)
+        #NOTE: manually setting the first eigenvalue to zero seems to improve SPS numerical-analytic agreement at first eigenmode
+        #(actually there is no difference as long as first eigenvalue is negative as it should be. Sometimes it comes out as a small positive value)
         s[-1]=0
-        U[:,-1]=np.zeros(len(s))
-        #note that the vectors come out 2-normalized
+        #this also works
+        #s[-1]=-np.abs(s[-1])
+        
+        #NOTE: by contrast, manually setting the first eigenvector to zero seems to lead to errors in (nonlinear) numerical simulations
+        #do not do this
+        #U[:,-1]=np.zeros(len(s))
+        #note that the vectors come out 2-normalized. seems to be fine as it is
         return s[::-1], U[:,::-1]
         
 ####################################################################################################
