@@ -59,7 +59,8 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(u_0))
-        ax.set_ylim(0, 11)
+        #ax.set_ylim(0, 11)
+        
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')        
         ax.plot(u_0, 'b-')     
@@ -94,7 +95,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
-            ax.set_ylim(-0.05,0.1)
+            #ax.set_ylim(-0.05,0.1)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -290,16 +291,17 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                 Iss_numerical.append(np.mean(I_Delta_t))
             
 
-        if Visual==True and i%10 == 0:
+        if i%10 == 0:
             print(i)
-            ax.clear()
-            #ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
-            #line2.set_ydata(I_Delta_t)
-            #line1.set_ydata(E_Delta_t)
-            ax.plot(I_Delta_t, 'b-')
-            ax.plot(E_Delta_t, 'r-')
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            if Visual==True:
+                ax.clear()
+                #ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
+                #line2.set_ydata(I_Delta_t)
+                #line1.set_ydata(E_Delta_t)
+                ax.plot(I_Delta_t, 'b-')
+                ax.plot(E_Delta_t, 'r-')
+                fig.canvas.draw()
+                fig.canvas.flush_events()
            
         E_0 = np.copy(E_Delta_t)   
         I_0 = np.copy(I_Delta_t)
@@ -343,6 +345,9 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                           d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
+
+
+
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -352,40 +357,53 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     a = d_e*Ess*(1-d_e*Ess)
     b = d_i*Iss*(1-d_i*Iss)
     
-   
+    #eigenvectors are used for plotting purposes only. 
     if one_dim==True:
-        s = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=False)
+        s, U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
     else:
         s=eigvals
+        U=eigvecs
     
+    #fluctuations about the steady state
     beta_E_0 = np.zeros(len(s))
     beta_I_0 = np.zeros(len(s))
-    
-    #Fourier transform of a constant SHOULD be an impulse function with amplitude value the constant itself
-    #seems to work best by keeping all zeros?
-    #beta_E_0[0] = Ess
-    #beta_I_0[0] = Iss    
+     
             
     prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)
     prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)
     prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)
     prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel) 
     
-    #beta_E_Delta_t = np.zeros_like(beta_E_0)
-    #beta_I_Delta_t = np.zeros_like(beta_I_0)
+    beta_E_Delta_t = np.zeros_like(beta_E_0)
+    beta_I_Delta_t = np.zeros_like(beta_I_0)
     
     Timesteps = int(round(Time/Delta_t))    
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
     
     beta_E_total = np.zeros((len(beta_E_0),Timesteps-1000))    
+     
+    
+    
+    if Visual==True:
+        plt.ion()
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.set_xlim(0, len(beta_E_0))
+        #ax.set_ylim(0, 1)
+        #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
+        #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')
+        
+        ax.plot(np.dot(U,beta_I_0), 'b-')
+        ax.plot(np.dot(U,beta_E_0), 'r-')
+        fig.canvas.draw()
+    
+    
+       
+    
     
     for i in range(Timesteps):
-        if Visual==True and i%10 == 0:
-            print(i)
-            print(beta_E_0[0])
-            print(beta_I_0[0])
-            
+         
         if sigma_noise_e!=0 or sigma_noise_i!=0:
             Noise_E = sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])
             Noise_I = sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(beta_I_0))])
@@ -398,6 +416,18 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
          
         if i>=1000:
             beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t)
+            
+            
+        if i%10 == 0:
+            print(i)   
+            if Visual==True:
+            
+                ax.clear()
+    
+                ax.plot(np.dot(U,beta_I_Delta_t), 'b-')
+                ax.plot(np.dot(U,beta_E_Delta_t), 'r-')
+                fig.canvas.draw()
+                fig.canvas.flush_events()
             
         beta_E_0 = np.copy(beta_E_Delta_t)   
         beta_I_0 = np.copy(beta_I_Delta_t)    
@@ -430,11 +460,13 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
 # activity analysis
 #
 ##################################################################################   
-def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=None,
+def Activity_Analysis(Ess, Iss, Delta_t,
                       alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
                       sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
                       d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
-                      Graph_Kernel='Gaussian', prediction=False, max_omega=100, delta_omega=0.1,
+                      Graph_Kernel='Gaussian', 
+                      beta=False, E_total=None, beta_E_total=None,
+                      prediction=False, max_omega=100, delta_omega=0.1,
                       one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, Save_Results=False, Filepath=' ', NSim=0):
         
     if Save_Results==True:                    
@@ -457,8 +489,7 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
     if beta==False:
         activity = E_total-Ess
         beta_activity = np.dot(U.T,activity)
-    else:
-        #beta_E_total[0] = beta_E_total[0] - Ess   #np.dot(U.T[0],Ess*np.ones(len(s)))
+    else:       
         beta_activity = beta_E_total
         #activity = np.dot(U,beta_activity)
         
@@ -547,10 +578,15 @@ def Activity_Analysis(Ess, Iss, Delta_t, beta=False, E_total=None, beta_E_total=
         if beta==False:
             if prediction==True:
                 fig3 = plt.figure()
-                plt.pcolormesh(predicted_FC)
+                ax = fig3.add_subplot(111)
+                plot_pred_FC = ax.pcolormesh(predicted_FC)
+                fig3.colorbar(plot_pred_FC)
                 
             fig4 = plt.figure()
-            plt.pcolormesh(FC)
+            ax2 = fig4.add_subplot(111)
+            plot_actual_FC = ax2.pcolormesh(FC)
+            fig4.colorbar(plot_actual_FC)
+            
             if Save_Results==True:    
                 plt.savefig(figpath3)
 #        else:
