@@ -466,7 +466,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                       d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
                       Graph_Kernel='Gaussian', 
                       beta=False, E_total=None, beta_E_total=None,
-                      prediction=False, max_omega=100, delta_omega=0.1,
+                      prediction=False, min_omega=0, max_omega=100, delta_omega=0.1,
                       one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, Save_Results=False, Filepath=' ', NSim=0):
         
     if Save_Results==True:                    
@@ -501,7 +501,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     
     #full temporal spectrum
     FTPS = np.sum(TPS[1], axis=0)
-    frequencies = TPS[0]*(2*np.pi)
+    frequencies = TPS[0]#*(2*np.pi)
     print("Simulation TPS obtained.")
     #FTPS = np.sum(TPS, axis=0)
   
@@ -533,10 +533,17 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
-                                                       sigma_noise_e, sigma_noise_i, max_omega, delta_omega,
+                                                       sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega,
                                                        Spatial_Spectrum_Only=False, Visual=False)
          
-         predicted_PS=delta_omega*np.sum(PS_prediction, axis=0)/np.pi
+         PS_prediction_spatial = Graph_WC_Spatiotemporal_PowerSpectrum(s, Graph_Kernel, Ess, Iss,
+                                                       alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
+                                                       sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
+                                                       tau_e, tau_i,
+                                                       sigma_noise_e, sigma_noise_i,# min_omega, max_omega, delta_omega,
+                                                       Spatial_Spectrum_Only=True, Visual=False)         
+         
+         predicted_PS=PS_prediction_spatial[:,0,0]#delta_omega*np.sum(PS_prediction, axis=0)/np.pi
          predicted_TPS=2*np.sum(PS_prediction, axis=1)
          
          if beta==False:
@@ -567,11 +574,11 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         ax = fig2.add_subplot(111)
         ax.set_xlabel("Angular Frequency ($\omega$)")
         ax.set_title("Temporal Power Spectrum")
-        line3, = plt.semilogx(frequencies, FTPS, '-r')       
+        line3, = plt.loglog(frequencies, FTPS, '-r')       
         #line3, = plt.semilogx(freqs[idx], FTPS[idx])
         
         if prediction==True:
-            line4, = plt.semilogx(np.arange(0,max_omega,delta_omega),predicted_TPS, '--k')
+            line4, = plt.loglog(np.arange(min_omega,max_omega,delta_omega)/(2*np.pi),predicted_TPS, '--k')
         if Save_Results==True:    
             plt.savefig(figpath2)
         
