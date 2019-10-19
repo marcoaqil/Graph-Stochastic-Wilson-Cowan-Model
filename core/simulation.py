@@ -1,6 +1,7 @@
 import numpy as np
 import scipy as sp
 from scipy import sparse
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from scipy import signal
 from random import gauss
@@ -26,7 +27,7 @@ from analysis import *
 ####################################################################################################   
 
 def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b=1, c=1, sigma_noise=0,
-                          one_dim=False, syn=0, gridsize=1000,  h=0.01, eigvals=None, eigvecs=None,                         
+                          one_dim=False, syn=0, gridsize=1000,  h=0.01, GF_domain=False, eigvals=None, eigvecs=None,                         
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
        
     if one_dim==True:
@@ -38,12 +39,17 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
     #note that s is a vector of eigenvalues, not the diagonal matrix of eigenvalues
     #s_matrix=sp.sparse.diags(s).toarray()
     if Graph_Kernel!='Damped Wave':
-        kernel_matrix=sp.sparse.diags(GraphKernel(s,kernel_param, type=Graph_Kernel)).toarray()
-        Laplacian_based_propagator = np.dot(U, np.dot(kernel_matrix, U.T))
+        kernel_gf = GraphKernel(s,kernel_param, type=Graph_Kernel)
+        if GF_domain == False:
+            kernel_matrix=sp.sparse.diags(kernel_gf).toarray()
+            Laplacian_based_propagator = np.dot(U, np.dot(kernel_matrix, U.T))
+      
     else:
-        kernel_matrix, kernel_matrix_prime=GraphKernel(s,kernel_param, type=Graph_Kernel, a=a, b=b, c=c, prime=True)
-        Laplacian_based_propagator = np.dot(U, np.dot(sp.sparse.diags(kernel_matrix).toarray(), U.T))
-        Laplacian_based_propagator_prime = np.dot(U, np.dot(sp.sparse.diags(kernel_matrix_prime).toarray(), U.T))
+        kernel_gf, kernel_gf_prime=GraphKernel(s,kernel_param, type=Graph_Kernel, a=a, b=b, c=c, prime=True)
+        
+        if GF_domain == False:
+            Laplacian_based_propagator = np.dot(U, np.dot(sp.sparse.diags(kernel_gf).toarray(), U.T))
+            Laplacian_based_propagator_prime = np.dot(U, np.dot(sp.sparse.diags(kernel_gf_prime).toarray(), U.T))
 
         
         
@@ -51,10 +57,10 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
     u_Delta_t = np.zeros_like(u_0)
     u_prime = np.zeros_like(u_0)
     
-    if SaveActivity==True:
+    if SaveActivity==True or GF_domain == True:
         u_total = np.zeros((len(u_0),Timesteps))   
     
-    if Visual==True:
+    if Visual==True and GF_domain == False:
         plt.ion()
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -74,24 +80,31 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
             Noise = 0
         
         
-        if SaveActivity==True:
+        if SaveActivity==True or GF_domain == True:
             u_total[:,i]=np.copy(u_0)
             
-        if i%5 == 0:
+        if i%10 == 0:
             print(i)
         #impulse response    
         # if i==500:
         #     E_Delta_t[600:650]=0.9*np.ones(50)
         #     I_Delta_t[580:620]=0.9*np.ones(40)        
         if Graph_Kernel!='Damped Wave':
-            u_Delta_t = np.dot(Laplacian_based_propagator,u_0)+np.sqrt(Delta_t)*Noise
+            if GF_domain == False:
+                u_Delta_t = np.dot(Laplacian_based_propagator,u_0)+np.sqrt(Delta_t)*Noise
+            else:
+                u_Delta_t = kernel_gf * u_0 + np.sqrt(Delta_t)*Noise
         else:
-            u_Delta_t = np.dot(Laplacian_based_propagator,u_0)+np.dot(Laplacian_based_propagator_prime,u_prime)+np.sqrt(Delta_t)*Noise
-            u_prime=(u_Delta_t-u_0)/kernel_param
+            if GF_domain == False:
+                u_Delta_t = np.dot(Laplacian_based_propagator,u_0)+np.dot(Laplacian_based_propagator_prime,u_prime)+np.sqrt(Delta_t)*Noise
+                u_prime=(u_Delta_t-u_0)/kernel_param
+            else:
+                u_Delta_t = kernel_gf * u_0 + kernel_gf_prime * u_prime + np.sqrt(Delta_t)*Noise
+                u_prime=(u_Delta_t-u_0)/kernel_param
             
  
             
-        if Visual==True and i%5 == 0:
+        if Visual==True and i%5 == 0 and GF_domain == False:
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
@@ -126,7 +139,10 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
                 del hf["Activity"]
                 hf.create_dataset("Activity",  data=u_total)    
     
-    return u_Delta_t
+    if GF_domain == False:
+        return u_Delta_t
+    else:
+        return u_total
 
 ####################################################################################################
 ####################################################################################################
@@ -295,7 +311,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             print(i)
             if Visual==True:
                 ax.clear()
-                #ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
+                ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
                 #line2.set_ydata(I_Delta_t)
                 #line1.set_ydata(E_Delta_t)
                 ax.plot(I_Delta_t, 'b-')
@@ -467,6 +483,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                       Graph_Kernel='Gaussian', 
                       beta=False, E_total=None, beta_E_total=None,
                       prediction=False, min_omega=0, max_omega=100, delta_omega=0.1,
+                      Spatial_scaling=[1,0], Temporal_scaling=[1,0],
                       one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, Save_Results=False, Filepath=' ', NSim=0):
         
     if Save_Results==True:                    
@@ -492,22 +509,8 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     else:       
         beta_activity = beta_E_total
         #activity = np.dot(U,beta_activity)
-        
-    PS = np.var(beta_activity, axis=1)
-    print("Simulation SPS obtained.")
-    TPS = signal.periodogram(beta_activity, fs=1/Delta_t, detrend='constant', scaling='density') 
-    
-    #TPS = np.abs(np.fft.fft(np.dot(U.T,E_total-Ess)))**2
-    
-    #full temporal spectrum
-    FTPS = np.sum(TPS[1], axis=0)
-    frequencies = TPS[0]#*(2*np.pi)
-    print("Simulation TPS obtained.")
-    #FTPS = np.sum(TPS, axis=0)
-  
-    #time_step = 0.01
-    #freqs = np.fft.fftfreq(FTPS.size, time_step)
-    #idx = np.argsort(freqs)
+
+
     HRF=False
     
     if HRF==True:
@@ -517,10 +520,26 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             k=1
             return (k*t) ** 8.6 * np.exp(-(k*t) / 0.547)
     
-        hrf_times = np.arange(0, 20, 0.1)
+        hrf_times = np.arange(0, 20, Delta_t)
         hrf_signal=hrf(hrf_times)
         for ts in range(np.shape(activity)[1]):
             activity[:,ts]=np.convolve(activity[:,ts],hrf_signal,mode='same')
+            
+    PS = Spatial_scaling[0]*np.var(beta_activity, axis=1)+Spatial_scaling[1]
+    print("Simulation SPS obtained.")
+    TPS = signal.periodogram(beta_activity, fs=1/Delta_t, detrend='constant', scaling='density') 
+    
+    #TPS = np.abs(np.fft.fft(np.dot(U.T,E_total-Ess)))**2
+    
+    #full temporal spectrum
+    FTPS = Temporal_scaling[0]*np.sum(TPS[1], axis=0)+Temporal_scaling[1]
+    frequencies = TPS[0]#*(2*np.pi)
+    print("Simulation TPS obtained.")
+    #FTPS = np.sum(TPS, axis=0)
+  
+    #time_step = 0.01
+    #freqs = np.fft.fftfreq(FTPS.size, time_step)
+    #idx = np.argsort(freqs)
  
     if beta==False:   
         covariance = np.cov(activity)
@@ -543,8 +562,8 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                                                        sigma_noise_e, sigma_noise_i,# min_omega, max_omega, delta_omega,
                                                        Spatial_Spectrum_Only=True, Visual=False)         
          
-         predicted_PS=PS_prediction_spatial[:,0,0]#delta_omega*np.sum(PS_prediction, axis=0)/np.pi
-         predicted_TPS=2*np.sum(PS_prediction, axis=1)
+         predicted_PS=Spatial_scaling[0]*PS_prediction_spatial[:,0,0]+Spatial_scaling[1]#delta_omega*np.sum(PS_prediction, axis=0)/np.pi
+         predicted_TPS=Temporal_scaling[0]*2*np.sum(PS_prediction, axis=1)+Temporal_scaling[1]
          
          if beta==False:
              predicted_FC = Functional_Connectivity(U, predicted_PS, False, False)
@@ -572,7 +591,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         
         fig2 = plt.figure()
         ax = fig2.add_subplot(111)
-        ax.set_xlabel("Angular Frequency ($\omega$)")
+        ax.set_xlabel("Temporal Frequency (Hz)")
         ax.set_title("Temporal Power Spectrum")
         line3, = plt.loglog(frequencies, FTPS, '-r')       
         #line3, = plt.semilogx(freqs[idx], FTPS[idx])
@@ -586,12 +605,14 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             if prediction==True:
                 fig3 = plt.figure()
                 ax = fig3.add_subplot(111)
-                plot_pred_FC = ax.pcolormesh(predicted_FC)
+                ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
+                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-1.0, vmax=1.0)
                 fig3.colorbar(plot_pred_FC)
                 
             fig4 = plt.figure()
             ax2 = fig4.add_subplot(111)
-            plot_actual_FC = ax2.pcolormesh(FC)
+            ax2.set_title("Functional Connectivity (numerical simulation)", pad=15)
+            plot_actual_FC = ax2.pcolormesh(FC, vmin=-1.0, vmax=1.0)
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
