@@ -3,6 +3,7 @@ import scipy as sp
 from scipy import special
 import matplotlib.pyplot as plt
 import matplotlib.colors as pltcolors
+from mpl_toolkits.mplot3d import Axes3D
 import h5py
 import os
 from scipy import sparse
@@ -21,13 +22,13 @@ def GraphKernel(x,t,type='Gaussian', a=1, b=1, c=1, prime=False):
             #add prefactor to make kernel of unitary height
             return np.exp(t*x)#*2*np.sqrt(t*np.pi)
         elif type=='Exponential':
-            return 2*t/(t**2-x)
+            return 1/(t-x) #*2*t
         elif type=='Pyramid':
             #return t*(np.sinc(t*np.sqrt(-x)/(2*np.pi)))**2
-            return np.sinc(np.sqrt(-x)*t/(2*np.pi))**2
+            return np.sinc(np.sqrt(-x)/(2*np.pi*t))**2
         elif type=='Rectangle':   
             #Note: significant Gibbs effect makes this not advisable
-            rect=t*(np.sinc(t*np.sqrt(-x)/(2*np.pi)))
+            rect=np.sinc(np.sqrt(-x)/(2*np.pi*t))
             #rect[-990:]=0
             return rect
         elif type=='Mexican Hat':
@@ -69,7 +70,7 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
         
         speed_factor=200
         indices1=np.arange(250,250+syn)#(gridsize*np.random.rand(syn)).astype(int)#
-        indices2=np.arange(650,650+syn)#(gridsize*np.random.rand(syn)).astype(int)#
+        indices2=np.arange(750,750+syn)#(gridsize*np.random.rand(syn)).astype(int)#
         
         #all-to-all or one-by-one connections
         alltoall=False
@@ -96,10 +97,10 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
                 
     
     #PLOT ADJ MATRIX
-    #fig3 = plt.figure()
-    #ax = fig3.add_subplot(111)
-    #ad_plot=ax.pcolormesh(AdjMatrix)
-    #fig3.colorbar(ad_plot)
+    fig3 = plt.figure()
+    ax = fig3.add_subplot(111)
+    ad_plot=ax.pcolormesh(AdjMatrix)
+    fig3.colorbar(ad_plot)
     
     Deg=np.sum(AdjMatrix, axis=0)
     #sqrt_Deg=np.power(Deg,-0.5)
@@ -351,7 +352,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             #ax.set_ylim(0, 20)
             #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
             #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-            line3, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix2[:,0,0], 'r-')   
+            line3, = plt.loglog(np.arange(1,len(eigs)+1),np.abs(Gmatrix2[:,0,0]), 'r-')   
             
         return np.abs(Gmatrix2)                 
     else:
@@ -388,23 +389,43 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
 
             
         if Visual==True:
-            plt.ion()
+            
             fig = plt.figure()
-            ax = fig.add_subplot(111)
+            plt.ion()
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(omega_range[1], max_omega)
             #########use the /2pi rescaling if want temporal frequency
             #ax.set_ylim(omega_range[1]/(2*np.pi), max_omega/(2*np.pi))
             #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
             #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-            ax.set_xscale('log')            
-            ax.set_yscale('log')
-            ax.set_xlabel("Spatial Eigenmode ($k$)")
-            ax.set_ylabel("Temporal Frequency (Hz units)")
-            ax.set_title("Spatiotemporal Power Spectrum")                 
-            pc=ax.pcolormesh(np.arange(1,len(eigs)+1),omegas/(2*np.pi),Full_Spectrum.T,norm=pltcolors.LogNorm())
-            fig.colorbar(pc)
-            #ax.pcolormesh(np.arange(1,len(eigs)+1),omega_range/(2*np.pi),Full_Spectrum.T)
+            
+
+            surf_plot=False
+            if surf_plot==True:
+                ax = fig.add_subplot(111,projection='3d')
+                              
+                X, Y = np.meshgrid(np.arange(1,len(eigs)+1),omegas/(2*np.pi))
+                ax.plot_surface(X,Y,Full_Spectrum.T)#,norm=pltcolors.LogNorm())
+
+            else:
+                ax = fig.add_subplot(111)
+
+                ax.set_xscale('log')            
+                ax.set_yscale('log')
+
+                ax.set_xlabel("Spatial Eigenmode ($k$)")
+                ax.set_ylabel("Temporal Frequency (Hz)")           
+                ax.set_title("Spatiotemporal Power Spectrum", pad=15) 
+                plt.minorticks_off()
+
+                pc=ax.pcolormesh(np.arange(1,len(eigs)+1),omegas/(2*np.pi),Full_Spectrum.T,norm=pltcolors.LogNorm())
+                
+                plt.yticks(ticks=[1,10,20,30,40], labels=['1','10','20','30','40'])
+
+                fig.colorbar(pc)
+
+            
+            
             
         return Full_Spectrum.T
    
@@ -418,21 +439,22 @@ def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
     covariance = np.dot(U,np.dot(np.diag(PS),U.T))
     FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))
     if Visual==True:
-        if one_dim==True:            
-            fig3 = plt.figure()
-            ax = fig3.add_subplot(111)
-            fc_plot=ax.pcolormesh(FC)#, vmax=0.5)
-            fig3.colorbar(fc_plot)
+         
+        fig3 = plt.figure()
+        ax = fig3.add_subplot(111)
+        ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
+        fc_plot=ax.imshow(FC, vmin=-0.1, vmax=0.1)
+        fig3.colorbar(fc_plot)
     
-        else:
-            from plotly.offline import download_plotlyjs, init_notebook_mode,  plot
-            import plotly.graph_objs as go
-            init_notebook_mode()    
-        
-            trace1 = go.Heatmap(z=FC)           
-            data = [trace1]            
-            figz = dict(data=data)
-            plot(figz, filename='FC.html')
+#        else:
+#            from plotly.offline import init_notebook_mode,  plot
+#            import plotly.graph_objs as go
+#            init_notebook_mode()    
+#        
+#            trace1 = go.Heatmap(z=FC)           
+#            data = [trace1]            
+#            figz = dict(data=data)
+#            plot(figz, filename='FC.html')
         
     
     return FC
@@ -533,7 +555,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     b_spatial = (np.sum(True_Spatial_Spectrum)-a_spatial*np.sum(current_spatial_spectrum))/n_spatial
                     scale_params_spatial[ss,:] = np.array([a_spatial,b_spatial])#np.dot(True_Spatial_Spectrum,all_spatial_spectra[ss,first_k:last_k,0,0])/(np.linalg.norm(all_spatial_spectra[ss,first_k:last_k,0,0], ord=2))**2            
                 
-                    dist_spatial[ss] = np.linalg.norm(True_Spatial_Spectrum - a_spatial*current_spatial_spectrum-b_spatial, ord=2)#1/np.corrcoef(True_Spatial_Spectrum, current_spatial_spectrum)[0,1]#
+                    dist_spatial[ss] = np.linalg.norm(True_Spatial_Spectrum - a_spatial*current_spatial_spectrum-b_spatial, ord=2)#sp.stats.ks_2samp(True_Spatial_Spectrum, current_spatial_spectrum*a_spatial+b_spatial)[0]#1-np.corrcoef(True_Spatial_Spectrum, current_spatial_spectrum)[0,1]#
                     
                     
                     
@@ -554,7 +576,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     b_temporal = (np.sum(True_Temporal_Spectrum)-a_temporal*np.sum(current_temporal_spectrum))/n_temporal
                     scale_params_temporal[ss,:] = np.array([a_temporal,b_temporal])#np.mean(diff)
                     
-                    dist_temporal[ss] = np.linalg.norm(True_Temporal_Spectrum - a_temporal*current_temporal_spectrum-b_temporal, ord=2)#1/np.corrcoef(True_Temporal_Spectrum, current_temporal_spectrum)[0,1]#
+                    dist_temporal[ss] = np.linalg.norm(True_Temporal_Spectrum - a_temporal*current_temporal_spectrum-b_temporal, ord=2)#sp.stats.ks_2samp(True_Temporal_Spectrum, current_temporal_spectrum*a_temporal+b_temporal)[0]#1-np.corrcoef(True_Temporal_Spectrum, current_temporal_spectrum)[0,1]#
                     
                
 
