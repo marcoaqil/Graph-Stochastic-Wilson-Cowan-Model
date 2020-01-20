@@ -208,22 +208,22 @@ def graph_WCM_propagators(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
         propagator_II = np.dot(U, np.dot(diag_prop_II,V))
         
     
-    return propagator_EE, propagator_IE, propagator_EI, propagator_II
+    return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64')
  
-@jit(nopython=True, parallel=True)
+#@jit(nopython=True, parallel=True)
 def transpose_parallel_dot(A, B):  
     return np.dot(A.T, B)
 
-@jit(nopython=True, parallel=True)    
+#@jit(nopython=True, parallel=True)    
 def GWCM_Loop(E_0, I_0,  Delta_t,
            propagator_EE, propagator_IE, propagator_EI, propagator_II, 
            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I):
     
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
-    #print(propagator_EE.shape)
-    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-np.dot(propagator_EE,E_0) + np.dot(propagator_IE,I_0) - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
-    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-np.dot(propagator_EI,E_0) + np.dot(propagator_II,I_0) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
+    #print(I_0.dtype)
+    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-np.dot(propagator_EE,np.float64(E_0)) + np.dot(propagator_IE,np.float64(I_0)) - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
+    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-np.dot(propagator_EI,np.float64(E_0)) + np.dot(propagator_II,np.float64(I_0)) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
     #print(E_Delta_t.shape)
     return E_Delta_t, I_Delta_t
 
@@ -246,11 +246,11 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
 
         
     if one_dim==True:    
-        E_0=Ess*np.ones(gridsize)
-        I_0=Iss*np.ones(gridsize)
+        E_0=Ess*np.ones(gridsize, dtype='float64')
+        I_0=Iss*np.ones(gridsize, dtype='float64')
     else:
-        E_0=Ess*np.ones(len(eigvals))
-        I_0=Iss*np.ones(len(eigvals))
+        E_0=Ess*np.ones(len(eigvals), dtype='float64')
+        I_0=Iss*np.ones(len(eigvals), dtype='float64')
         
     
     E_Delta_t = np.zeros_like(E_0)
@@ -259,7 +259,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     Timesteps = int(round(Time/Delta_t))
     
     
-    E_total = np.zeros((len(E_0),Timesteps-1000))
+    E_total = np.zeros((len(E_0),Timesteps-1000), dtype='float32')
     
     if Visual==True:
         plt.ion()
@@ -282,8 +282,8 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     for i in range(Timesteps):
         if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(E_0))])
-            Noise_I = sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(I_0))])
+            Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(E_0))])).astype('float64')
+            Noise_I = (sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(I_0))])).astype('float64')
         else:
             Noise_E = 0
             Noise_I = 0
@@ -301,7 +301,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         
          
         if i>=1000:
-            E_total[:,i-1000]=np.copy(E_Delta_t)
+            E_total[:,i-1000]=np.copy(E_Delta_t).astype('float32')
             if numerical_SS == True:
                 Ess_numerical.append(np.mean(E_Delta_t))
                 Iss_numerical.append(np.mean(I_Delta_t))
@@ -381,14 +381,14 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         U=eigvecs
     
     #fluctuations about the steady state
-    beta_E_0 = np.zeros(len(s))
-    beta_I_0 = np.zeros(len(s))
+    beta_E_0 = np.zeros(len(s), dtype='float64')
+    beta_I_0 = np.zeros(len(s), dtype='float64')
      
             
-    prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)
-    prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)
-    prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)
-    prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel) 
+    prop_EE = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)).astype('float64')
+    prop_IE = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)).astype('float64')
+    prop_EI = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)).astype('float64')
+    prop_II = (alpha_II * GraphKernel(s, t_II, Graph_Kernel)).astype('float64')
     
     beta_E_Delta_t = np.zeros_like(beta_E_0)
     beta_I_Delta_t = np.zeros_like(beta_I_0)
@@ -397,7 +397,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
     
-    beta_E_total = np.zeros((len(beta_E_0),Timesteps-1000))    
+    beta_E_total = np.zeros((len(beta_E_0),Timesteps-1000), dtype='float32')  
      
     
     
@@ -421,8 +421,8 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     for i in range(Timesteps):
          
         if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])
-            Noise_I = sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(beta_I_0))])
+            Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])).astype('float64')
+            Noise_I = (sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(beta_I_0))])).astype('float64')
         else:
             Noise_E = 0
             Noise_I = 0
@@ -431,7 +431,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         beta_I_Delta_t = beta_I_0 + time_I*(b*prop_EI*beta_E_0 - (d_i+b*prop_II)*beta_I_0) + Noise_I*np.sqrt(Delta_t)/tau_i
          
         if i>=1000:
-            beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t)
+            beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t).astype('float32')
             
             
         if i%10 == 0:
@@ -497,34 +497,30 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             os.makedirs(filepath)
             
     if one_dim==True:
-        s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
-    else:
-        s=eigvals 
-        U=eigvecs       
+        eigvals,eigvecs = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+     
     
     #analyze fluctuations about the steady state
     if beta==False:
-        activity = E_total-Ess
-        beta_activity = np.dot(U.T,activity)
-    else:       
-        beta_activity = beta_E_total
-        #activity = np.dot(U,beta_activity)
+        E_total -= Ess
+        beta_E_total = np.dot(eigvecs.T,E_total)
+    #else:
+        #needed only to calculate FC, which is only rarely done with 
+        #whole connectome simulation (most common use case of beta, linearized sims)
+        #E_total = np.dot(eigvecs,beta_E_total)
         
-    PS = Spatial_scaling[0]*np.var(beta_activity, axis=1)+Spatial_scaling[1]
+    PS = Spatial_scaling[0]*np.var(beta_E_total, axis=1)+Spatial_scaling[1]
     print("Simulation SPS obtained.")
-    TPS = signal.periodogram(beta_activity, fs=1/Delta_t, detrend='constant', scaling='density') 
     
-    #TPS = np.abs(np.fft.fft(np.dot(U.T,E_total-Ess)))**2
+    temporal_downsampling = 1
+    TPS = signal.periodogram(beta_E_total[:,::temporal_downsampling], fs=1/(temporal_downsampling*Delta_t), detrend='constant', scaling='density') 
+    
     
     #full temporal spectrum
     FTPS = Temporal_scaling[0]*np.sum(TPS[1], axis=0)+Temporal_scaling[1]
-    frequencies = TPS[0]#*(2*np.pi)
+    frequencies = TPS[0]#*(2*np.pi)#for angular frequency
     print("Simulation TPS obtained.")
-    #FTPS = np.sum(TPS, axis=0)
-  
-    #time_step = 0.01
-    #freqs = np.fft.fftfreq(FTPS.size, time_step)
-    #idx = np.argsort(freqs)
+
     HRF=False
     
     if HRF==True:
@@ -536,35 +532,35 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     
         hrf_times = np.arange(0, 20, 0.1)
         hrf_signal=hrf(hrf_times)
-        for ts in range(np.shape(activity)[1]):
-            activity[:,ts]=np.convolve(activity[:,ts],hrf_signal,mode='same')
+        for ts in range(np.shape(E_total)[1]):
+            E_total[:,ts]=np.convolve(E_total[:,ts],hrf_signal,mode='same')
  
     if beta==False:   
-        covariance = np.cov(activity)
+        covariance = np.cov(E_total)
         FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))    
     
     print("All simulation activity measures completed.")
     if prediction==True:
          print("Obtaining analytic predictions...")
-         PS_prediction = Graph_WC_Spatiotemporal_PowerSpectrum(s, Graph_Kernel, Ess, Iss,
+         PS_prediction = Graph_WC_Spatiotemporal_PowerSpectrum(eigvals, Graph_Kernel, Ess, Iss,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
                                                        sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega,
                                                        Spatial_Spectrum_Only=False, Visual=False)
          
-         PS_prediction_spatial = Graph_WC_Spatiotemporal_PowerSpectrum(s, Graph_Kernel, Ess, Iss,
+         PS_prediction_spatial = Graph_WC_Spatiotemporal_PowerSpectrum(eigvals, Graph_Kernel, Ess, Iss,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
-                                                       sigma_noise_e, sigma_noise_i,# min_omega, max_omega, delta_omega,
+                                                       sigma_noise_e, sigma_noise_i,
                                                        Spatial_Spectrum_Only=True, Visual=False)         
          
          predicted_PS=Spatial_scaling[0]*PS_prediction_spatial[:,0,0]+Spatial_scaling[1]#delta_omega*np.sum(PS_prediction, axis=0)/np.pi
          predicted_TPS=Temporal_scaling[0]*2*np.sum(PS_prediction, axis=1)+Temporal_scaling[1]
          
          if beta==False:
-             predicted_FC = Functional_Connectivity(U, predicted_PS, False, False)
+             predicted_FC = Functional_Connectivity(eigvecs, predicted_PS, False, False)
          
      
     if Visual==True:
@@ -581,9 +577,9 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         #ax.set_xlim(-0.1, 20000)
         #ax.set_ylim(0, 20)
         
-        line2, = plt.loglog(np.arange(1,len(PS)+1), PS, '-r')     
+        line2, = plt.loglog(PS, '-r')     
         if prediction==True:
-            line1, = plt.loglog(np.arange(1,len(s)+1), predicted_PS, '--k')
+            line1, = plt.loglog(predicted_PS, '--k')
         if Save_Results==True:    
             plt.savefig(figpath1)
         
@@ -604,13 +600,13 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                 fig3 = plt.figure()
                 ax = fig3.add_subplot(111)
                 ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
-                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-1.0, vmax=1.0)
+                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-0.5, vmax=0.5)
                 fig3.colorbar(plot_pred_FC)
                 
             fig4 = plt.figure()
             ax2 = fig4.add_subplot(111)
             ax2.set_title("Functional Connectivity (numerical simulation)", pad=15)
-            plot_actual_FC = ax2.pcolormesh(FC, vmin=-1.0, vmax=1.0)
+            plot_actual_FC = ax2.pcolormesh(FC, vmin=-0.5, vmax=0.5)
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
