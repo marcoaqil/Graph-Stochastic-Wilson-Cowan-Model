@@ -15,7 +15,7 @@ import time
 #from sympy import exp
 from scipy import stats
 import os
-from analysis import *
+from .analysis import *
 #written for python 3.6 
 ####################################################################################################
 ####################################################################################################    
