@@ -332,6 +332,11 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
     
     a = d_e*Ess*(1-d_e*Ess)
     b = d_i*Iss*(1-d_i*Iss)
+    
+    Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
+       
+    A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
+    A = np.moveaxis(A,-1,0)
         
     if Spatial_Spectrum_Only==True:
         
@@ -344,6 +349,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         
         Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*G_EE+d_i*tau_e+b*tau_e*G_II))*((tau_i/tau_e) + ((a**2)*(G_IE**2)+ (d_i + b*G_II)**2)/(d_e*d_i+ (d_e*b*G_II) - (a*d_i*G_EE) - a*b*(G_EE*G_II-G_EI*G_IE)))
         
+        #i cannot currently be bothered to write this down in terms of the parameters explicitly
+        Gmatrix2[:,1,1] = 0.5*(Dmatrix[1,1] + (Dmatrix[0,0]*A[:,1,0]**2+Dmatrix[1,1]*A[:,0,0]**2) / (A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]))/(A[:,0,0]+A[:,1,1])
         
         if Visual==True:
             plt.ion()
@@ -361,11 +368,6 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
 
         E_Full_Spectrum=np.zeros((len(eigs),len(omegas)), dtype=float)
         I_Full_Spectrum=np.zeros((len(eigs),len(omegas)), dtype=float)
-        
-        Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
-       
-        A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
-        A = np.moveaxis(A,-1,0)
            
         for i, omega in enumerate(omegas):
             E_Full_Spectrum[:,i] = (Dmatrix[0,0]*(A[:,1,1]**2+omega**2) + Dmatrix[1,1]*A[:,0,1]**2)/((A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]-omega**2)**2 + ((A[:,0,0]+A[:,1,1])*omega)**2)
@@ -563,11 +565,13 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     else:
                         E_spatial_spectrum = np.log10(np.array([np.median(elem) for elem in np.array_split(all_spatial_spectra[ss,first_k:last_k,0,0], bins)]))
                         I_spatial_spectrum = np.log10(np.array([np.median(elem) for elem in np.array_split(all_spatial_spectra[ss,first_k:last_k,1,1], bins)]))
+                        
+                        
                         SPS_points = np.array([elem.mean() for elem in np.array_split(np.arange(18715)[first_k:last_k], bins)])
                             
                     a_matrix_spatial = np.vstack((E_spatial_spectrum,I_spatial_spectrum,np.ones_like(True_Spatial_Spectrum))).T
                     
-                    scale_params_spatial[ss,:] = np.linalg.lstsq(a_matrix_spatial,True_Spatial_Spectrum)
+                    scale_params_spatial[ss,:],_,_,_ = np.linalg.lstsq(a_matrix_spatial,True_Spatial_Spectrum)
                     
                     current_spatial_spectrum = scale_params_spatial[ss,0] * E_spatial_spectrum + \
                                                scale_params_spatial[ss,1] * I_spatial_spectrum + \
@@ -594,12 +598,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     E_temporal_spectrum[ss,:] = np.log10(2*np.sum(E_Spectrum,axis=1))
                     I_temporal_spectrum[ss,:] = np.log10(2*np.sum(I_Spectrum,axis=1))
                                         
-                    a_matrix_temporal = np.vstack((E_temporal_spectrum,I_temporal_spectrum,np.ones_like(True_Temporal_Spectrum))).T
+                    a_matrix_temporal = np.vstack((E_temporal_spectrum[ss,:],I_temporal_spectrum[ss,:],np.ones_like(True_Temporal_Spectrum))).T
                     
-                    scale_params_temporal[ss,:] = np.linalg.lstsq(a_matrix_temporal,True_Temporal_Spectrum)
+                    scale_params_temporal[ss,:],_,_,_  = np.linalg.lstsq(a_matrix_temporal,True_Temporal_Spectrum)
                     
-                    current_temporal_spectrum = scale_params_temporal[ss,0] * E_temporal_spectrum + \
-                                               scale_params_temporal[ss,1] * I_temporal_spectrum + \
+                    current_temporal_spectrum = scale_params_temporal[ss,0] * E_temporal_spectrum[ss,:] + \
+                                               scale_params_temporal[ss,1] * I_temporal_spectrum[ss,:] + \
                                                scale_params_temporal[ss,2] * np.ones_like(True_Temporal_Spectrum)                    
                     
                     rescaled_temporal_spectra[ss,:] = np.copy(current_temporal_spectrum)
