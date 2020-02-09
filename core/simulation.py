@@ -542,7 +542,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     print("All simulation activity measures completed.")
     if prediction==True:
          print("Obtaining analytic predictions...")
-         PS_prediction = Graph_WC_Spatiotemporal_PowerSpectrum(eigvals, Graph_Kernel, Ess, Iss,
+         PS_prediction, PS_prediction_I = Graph_WC_Spatiotemporal_PowerSpectrum(eigvals, Graph_Kernel, Ess, Iss,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
