@@ -404,6 +404,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                 ax.set_xlabel("Spatial Eigenmode ($k$)")
                 ax.set_ylabel("Temporal Frequency (Hz)")           
                 ax.set_title("Spatiotemporal Power Spectrum", pad=15) 
+                ax.set_xlim(1, len(eigs))
                 plt.minorticks_off()
 
                 pc=ax.pcolormesh(np.arange(0,len(eigs)),omegas/(2*np.pi),E_Full_Spectrum.T,norm=pltcolors.LogNorm())
@@ -420,6 +421,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                 ax_2.set_xlabel("Spatial Eigenmode ($ks$)")
                 ax_2.set_ylabel("Temporal Frequency (Hz)")           
                 ax_2.set_title("Spatiotemporal Power Spectrum", pad=15) 
+                ax_2.set_xlim(1, len(eigs))
                 plt.minorticks_off()
 
                 pc_2=ax_2.pcolormesh(np.arange(0,len(eigs)),omegas/(2*np.pi),I_Full_Spectrum.T,norm=pltcolors.LogNorm())
@@ -464,7 +466,7 @@ def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
 ####################################################################################################    
 def NF_to_empirical(x, e_s, i_s):
     
-    c_s =  x[0]*e_s+x[1]
+    c_s =  x[0]*e_s#+x[1]
     #c_s =  x[0]*e_s+x[1]*i_s+x[2]
     #c_s =  x[0]*(e_s*i_s)+x[1]
     #c_s =  x[0]*(e_s+i_s)+x[1]*(e_s*i_s)+x[2]
@@ -480,7 +482,7 @@ def find_scaling(x, e_s, i_s, t_s):
     
     c_s = NF_to_empirical(x, e_s, i_s)    
 
-    return np.linalg.norm(np.log10(c_s)-np.log10(t_s),ord=2)
+    return np.linalg.norm(np.log10(c_s)-np.log10(t_s),ord=1)
 ####################################################################################################
 #Loop for all semi-analytic calculations given parameter set and eigenvalues: HSS, LSA, PSD
 ####################################################################################################    
@@ -571,14 +573,15 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
             for ss in range(len(steady_states[0])):
                 
                 Ess = steady_states[0,ss]
-                Iss = steady_states[1,ss]               
+                Iss = steady_states[1,ss]          
+                sigma_noise = 1
                         
                 if True_Spatial_Spectrum is not None:
                     all_spatial_spectra[ss,:,:,:] = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
                                                   alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                   sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
                                                   tau_e, tau_i, 
-                                                  sigma_noise_e=1, sigma_noise_i=1,
+                                                  sigma_noise_e=sigma_noise, sigma_noise_i=sigma_noise,
                                                   Spatial_Spectrum_Only=True, Visual=False)
                     
                     
@@ -594,10 +597,10 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
 #                    a_matrix_spatial = np.vstack((E_spatial_spectrum,
 #                                                  #I_spatial_spectrum,
 #                                                  #E_spatial_spectrum*I_spatial_spectrum,
-#                                                  np.ones_like(True_Spatial_Spectrum))).T
+#                                                  np.zeros_like(True_Spatial_Spectrum))).T
 #                    scale_params_spatial[ss,:] = np.linalg.lstsq(a_matrix_spatial, True_Spatial_Spectrum)[0]
                     
-                    scale_params_spatial[ss,:] = sp.optimize.fmin(find_scaling, x0=[1e3,1e6], args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum), disp=0)
+                    scale_params_spatial[ss,:] = sp.optimize.fmin(find_scaling, x0=[1e4], args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum), disp=0)
                     
 #                    n_spatial = len(True_Spatial_Spectrum)    
 #                    a_spatial = (n_spatial*np.dot(E_spatial_spectrum,True_Spatial_Spectrum)-np.sum(True_Spatial_Spectrum)*np.sum(E_spatial_spectrum))/(n_spatial*np.dot(E_spatial_spectrum,E_spatial_spectrum)-np.sum(E_spatial_spectrum)**2)
@@ -670,7 +673,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
 
 
                  
-                print("Best suitable steady state: %d, with Ess=%.4g Iss=%.4g.\nDist spatial: %.4g, scale: *%.4g. +%.4g \nDist temporal: %.4g, scale: *%.4g +%.4g\n"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], dist_spatial[bestSSS], scale_params_spatial[bestSSS,0], scale_params_spatial[bestSSS,1], dist_temporal[bestSSS], scale_params_temporal[bestSSS,0], scale_params_temporal[bestSSS,1]))
+                print("Best suitable steady state: %d, with Ess=%.4g Iss=%.4g.\nDist spatial: %.4g, scale: *%.4g. +%.4g \nDist temporal: %.4g, scale: *%.4g +%.4g\n"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], dist_spatial[bestSSS], scale_params_spatial[bestSSS,0], scale_params_spatial[bestSSS,0], dist_temporal[bestSSS], scale_params_temporal[bestSSS,0], scale_params_temporal[bestSSS,0]))
 
                 
                 plt.ioff()

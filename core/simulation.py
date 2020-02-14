@@ -509,7 +509,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         #whole connectome simulation (most common use case of beta, linearized sims)
         #E_total = np.dot(eigvecs,beta_E_total)
         
-    PS = Spatial_scaling[0]*np.var(beta_E_total, axis=1)+Spatial_scaling[1]
+    PS = Spatial_scaling[0]*np.mean(np.abs(beta_E_total)**2, axis=1)+Spatial_scaling[1]
     print("Simulation SPS obtained.")
     
     temporal_downsampling = 1
@@ -600,13 +600,13 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                 fig3 = plt.figure()
                 ax = fig3.add_subplot(111)
                 ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
-                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-0.5, vmax=0.5)
+                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-0.1, vmax=0.1)
                 fig3.colorbar(plot_pred_FC)
                 
             fig4 = plt.figure()
             ax2 = fig4.add_subplot(111)
             ax2.set_title("Functional Connectivity (numerical simulation)", pad=15)
-            plot_actual_FC = ax2.pcolormesh(FC, vmin=-0.5, vmax=0.5)
+            plot_actual_FC = ax2.pcolormesh(FC, vmin=-0.1, vmax=0.1)
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
