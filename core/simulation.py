@@ -512,7 +512,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     PS = Spatial_scaling[0]*np.mean(np.abs(beta_E_total)**2, axis=1)+Spatial_scaling[1]
     print("Simulation SPS obtained.")
     
-    temporal_downsampling = 1
+    temporal_downsampling = 100
     TPS = signal.periodogram(beta_E_total[:,::temporal_downsampling], fs=1/(temporal_downsampling*Delta_t), detrend='constant', scaling='density') 
     
     
