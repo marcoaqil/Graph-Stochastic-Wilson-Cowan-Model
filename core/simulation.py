@@ -8,7 +8,6 @@ from random import gauss
 #import hdf5storage
 import h5py
 import timeit
-from numba import jit
 import time
 #from sympy.solvers.solveset import nonlinsolve
 #from sympy.core.symbol import symbols

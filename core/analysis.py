@@ -262,6 +262,9 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     if Visual==True:
         plt.ion()
         fig = plt.figure()
+        plt.title("Jacobian Eigenspectrum")
+        plt.xlabel("Re[x]")
+        plt.ylabel("Im[x]")
         color=np.repeat(np.linspace(0,1,len(eigs)),2)[::-1]
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
@@ -354,7 +357,9 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         
         if Visual==True:
             plt.ion()
-            fig = plt.figure()
+            plt.figure()
+            plt.xlabel("Harmonic Eigenmode ($k$)")
+            plt.title("Harmonic Power Spectrum $H_E(k)$")
             #ax = fig.add_subplot(111)
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(0, 20)
@@ -376,8 +381,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             
         if Visual==True:
             
-            fig = plt.figure()
-            plt.ion()
+            # fig = plt.figure()
+            # plt.ion()
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(omega_range[1], max_omega)
             #########use the /2pi rescaling if want temporal frequency
@@ -388,6 +393,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
 
             surf_plot=False
             if surf_plot==True:
+                fig = plt.figure()
+                plt.ion()
                 ax = fig.add_subplot(121,projection='3d')
                               
                 X, Y = np.meshgrid(np.arange(1,len(eigs)+1),omegas/(2*np.pi))
@@ -407,7 +414,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                 plt.xlim(1, len(eigs))
                 plt.minorticks_off()
 
-                pc=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),E_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm())
+                pc=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),E_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm(), cmap='jet')
                 
                 plt.yticks(ticks=[1,10,20,30,40], labels=['1','10','20','30','40'])
 
@@ -424,7 +431,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                 plt.xlim(1, len(eigs))
                 plt.minorticks_off()
 
-                pc_2=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),I_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm())
+                pc_2=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),I_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm(), cmap='jet')
                 
                 plt.yticks(ticks=[1,10,20,30,40], labels=['1','10','20','30','40'])
 
@@ -792,8 +799,11 @@ def construct_fibers_from_data(filepath_data,
                                output_filepath_fiber_ends=None):
     
     #important: this sets which fiber dataset is used for computation of edges
-    with h5py.File(filepath_Fibers, 'r') as file:
-        Fibers=[file[element][:] for element in file['fg']['fibers'][0]]
+    if filepath_Fibers.endswith('.npy'):
+        Fibers = np.load(filepath_Fibers,allow_pickle=True)
+    else:
+        with h5py.File(filepath_Fibers, 'r') as file:
+            Fibers=[file[element][:] for element in file['fgCC']['fibers'][0]]
         
     with h5py.File(filepath_data, 'r') as file:    
         AllVet=np.asarray(file['vertices']['all'])    
