@@ -8,7 +8,6 @@ from random import gauss
 #import hdf5storage
 import h5py
 import timeit
-from numba import jit
 import time
 #from sympy.solvers.solveset import nonlinsolve
 #from sympy.core.symbol import symbols
@@ -16,6 +15,7 @@ import time
 from scipy import stats
 import os
 from .analysis import *
+opj = os.path.join
 #written for python 3.6 
 ####################################################################################################
 ####################################################################################################    
@@ -481,10 +481,19 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                       sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
                       d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
                       Graph_Kernel='Gaussian', 
-                      beta=False, E_total=None, beta_E_total=None,
-                      prediction=False, min_omega=0, max_omega=100, delta_omega=0.1,
+                      E_total=None, beta_E_total=None, compute_FC=False,
+                      prediction=False, min_omega=0, max_omega=100, delta_omega=0.1, temporal_downsampling=1,
                       Spatial_scaling=[1,0], Temporal_scaling=[1,0],
                       one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, Save_Results=False, Filepath=' ', NSim=0):
+
+    plt.rcParams.update({'font.size': 26})
+    #plt.rcParams.update({'pdf.fonttype':42})
+    plt.rcParams.update({'figure.max_open_warning': 0})
+    plt.rcParams['axes.spines.right'] = False
+    plt.rcParams['axes.spines.top'] = False
+    
+    if Filepath != ' ' and not os.path.exists(Filepath):
+        os.makedirs(Filepath)
         
     if Save_Results==True:                    
         if Filepath==' ':
@@ -501,18 +510,18 @@ def Activity_Analysis(Ess, Iss, Delta_t,
      
     
     #analyze fluctuations about the steady state
-    if beta==False:
-        E_total -= Ess
-        beta_E_total = np.dot(eigvecs.T,E_total)
-    #else:
+    if E_total is not None:
+        E_total_fluctuations = E_total-Ess
+        beta_E_total = np.dot(eigvecs.T,E_total_fluctuations)
+    else:
         #needed only to calculate FC, which is only rarely done with 
         #whole connectome simulation (most common use case of beta, linearized sims)
-        #E_total = np.dot(eigvecs,beta_E_total)
+        if compute_FC:
+            E_total = np.dot(eigvecs,beta_E_total)
         
     PS = Spatial_scaling[0]*np.mean(np.abs(beta_E_total)**2, axis=1)+Spatial_scaling[1]
     print("Simulation SPS obtained.")
     
-    temporal_downsampling = 100
     TPS = signal.periodogram(beta_E_total[:,::temporal_downsampling], fs=1/(temporal_downsampling*Delta_t), detrend='constant', scaling='density') 
     
     
@@ -532,11 +541,11 @@ def Activity_Analysis(Ess, Iss, Delta_t,
     
         hrf_times = np.arange(0, 20, 0.1)
         hrf_signal=hrf(hrf_times)
-        for ts in range(np.shape(E_total)[1]):
-            E_total[:,ts]=np.convolve(E_total[:,ts],hrf_signal,mode='same')
+        for ts in range(np.shape(E_total_fluctuations)[1]):
+            E_total_fluctuations[:,ts]=np.convolve(E_total[:,ts],hrf_signal,mode='same')
  
-    if beta==False:   
-        covariance = np.cov(E_total)
+    if compute_FC==True:   
+        covariance = np.cov(E_total_fluctuations)
         FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))    
     
     print("All simulation activity measures completed.")
@@ -559,58 +568,64 @@ def Activity_Analysis(Ess, Iss, Delta_t,
          predicted_PS=Spatial_scaling[0]*PS_prediction_spatial[:,0,0]+Spatial_scaling[1]#delta_omega*np.sum(PS_prediction, axis=0)/np.pi
          predicted_TPS=Temporal_scaling[0]*2*np.sum(PS_prediction, axis=1)+Temporal_scaling[1]
          
-         if beta==False:
-             predicted_FC = Functional_Connectivity(eigvecs, predicted_PS, False, False)
+         if compute_FC==True:
+             predicted_FC = Functional_Connectivity(eigvecs, predicted_PS, False)
          
      
     if Visual==True:
         if Save_Results==True:
-            figpath1=filepath+"SPS E0=%.5f Sim #%d.png"%(Ess, NSim)
-            figpath2=filepath+"TPS E0=%.5f Sim #%d.png"%(Ess, NSim)
-            figpath3=filepath+"FC E0=%.5f Sim #%d.png"%(Ess, NSim)
+            figpath1=opj(filepath, "SPS E0=%.5f Sim #%d.pdf"%(Ess, NSim))
+            figpath2=opj(filepath, "TPS E0=%.5f Sim #%d.pdf"%(Ess, NSim))
+            figpath3=opj(filepath, "Predicted_FC E0=%.5f Sim #%d.pdf"%(Ess, NSim))
+            figpath4=opj(filepath, "Simulated_FC E0=%.5f Sim #%d.pdf"%(Ess, NSim))
              
         plt.ion()
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_xlabel("Spatial Eigenmode ($k$)")
-        ax.set_title("Spatial Power Spectrum")
+        plt.figure(figsize=(8,8))
+        plt.xlabel("Harmonic Eigenmode ($k$)")
+        plt.title("Harmonic Power Spectrum")
         #ax.set_xlim(-0.1, 20000)
-        #ax.set_ylim(0, 20)
+        plt.ylim(1e-16, 1e-13)
+        plt.xlim(0.8,len(eigvals)+1)
         
-        line2, = plt.loglog(PS, '-r')     
+        line2, = plt.loglog(np.arange(1,len(eigvals)), PS[1:], '-r', label='Simulation')     
         if prediction==True:
-            line1, = plt.loglog(predicted_PS, '--k')
+            line1, = plt.loglog(np.arange(1,len(eigvals)), predicted_PS[1:], '--k', label='Prediction')
+        plt.legend()
         if Save_Results==True:    
-            plt.savefig(figpath1)
+            plt.savefig(figpath1, dpi=600, bbox_inches='tight')
         
-        fig2 = plt.figure()
-        ax = fig2.add_subplot(111)
-        ax.set_xlabel("Temporal Frequency (Hz)")
-        ax.set_title("Temporal Power Spectrum")
-        line3, = plt.loglog(frequencies, FTPS, '-r')       
-        #line3, = plt.semilogx(freqs[idx], FTPS[idx])
+        plt.figure(figsize=(8,8))
+        plt.xlabel("Temporal Frequency (Hz)")
+        plt.title("Temporal Power Spectrum")
+        line3, = plt.loglog(frequencies, FTPS, '-r', label='Simulation')#'rs', label='Simulation', mec='black')        
+        plt.ylim(8*1e-16,3*1e-13)
+        plt.xlim(0.5,100)
         
-        if prediction==True:
-            line4, = plt.loglog(np.arange(min_omega,max_omega,delta_omega)/(2*np.pi),predicted_TPS, '--k')
+        if prediction:
+            line4, = plt.loglog(np.arange(min_omega,max_omega,delta_omega)/(2*np.pi),predicted_TPS, '--k', label='Prediction')
+        plt.legend()
         if Save_Results==True:    
-            plt.savefig(figpath2)
+            plt.savefig(figpath2, dpi=600, bbox_inches='tight')
         
-        if beta==False:
-            if prediction==True:
-                fig3 = plt.figure()
+        if compute_FC:
+            if prediction:
+                fig3 = plt.figure(figsize=(8,8))
                 ax = fig3.add_subplot(111)
-                ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
-                plot_pred_FC = ax.pcolormesh(predicted_FC, vmin=-0.1, vmax=0.1)
+                ax.set_title("FC Matrix (Prediction)", pad=15)
+                plot_pred_FC = ax.imshow(predicted_FC, vmin=0.0, vmax=0.2, cmap='inferno')
                 fig3.colorbar(plot_pred_FC)
+
+                if Save_Results==True:    
+                    plt.savefig(figpath3, dpi=600, bbox_inches='tight')               
                 
-            fig4 = plt.figure()
+            fig4 = plt.figure(figsize=(8,8))
             ax2 = fig4.add_subplot(111)
-            ax2.set_title("Functional Connectivity (numerical simulation)", pad=15)
-            plot_actual_FC = ax2.pcolormesh(FC, vmin=-0.1, vmax=0.1)
+            ax2.set_title("FC Matrix (Simulation)", pad=15)
+            plot_actual_FC = ax2.imshow(FC, vmin=0.0, vmax=0.2, cmap='inferno')
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
-                plt.savefig(figpath3)
+                plt.savefig(figpath4, dpi=600, bbox_inches='tight')
 #        else:
 #            from plotly.offline import download_plotlyjs, init_notebook_mode,  plot
 #            import plotly.graph_objs as go
@@ -627,16 +642,16 @@ def Activity_Analysis(Ess, Iss, Delta_t,
 #            plot(figz, filename='FC.html')
         
         
-    if Save_Results==True:                    
+    # if Save_Results==True:                    
                 
-        with h5py.File(filepath+"PSD E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
-            if "PSD" not in list(hf.keys()):
-                hf.create_dataset("PSD",  data=PS)
-            else:
-                del hf["PSD"]
-                hf.create_dataset("PSD",  data=PS)
+    #     with h5py.File(filepath+"PSD E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
+    #         if "PSD" not in list(hf.keys()):
+    #             hf.create_dataset("PSD",  data=PS)
+    #         else:
+    #             del hf["PSD"]
+    #             hf.create_dataset("PSD",  data=PS)
                 
-    if beta==False:
+    if compute_FC:
         return PS, TPS, FC
     else:    
         return PS, TPS

@@ -262,6 +262,9 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     if Visual==True:
         plt.ion()
         fig = plt.figure()
+        plt.title("Jacobian Eigenspectrum")
+        plt.xlabel("Re[x]")
+        plt.ylabel("Im[x]")
         color=np.repeat(np.linspace(0,1,len(eigs)),2)[::-1]
         #ax = fig.add_subplot(111)
         #ax.set_xlim(-0.1, 20000)
@@ -354,13 +357,15 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         
         if Visual==True:
             plt.ion()
-            fig = plt.figure()
+            plt.figure()
+            plt.xlabel("Harmonic Eigenmode ($k$)")
+            plt.title("Harmonic Power Spectrum $H_E(k)$")
             #ax = fig.add_subplot(111)
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(0, 20)
             #line2, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,1,1], 'b-')
             #line1, = plt.loglog(np.arange(1,len(eigs)+1),Gmatrix[:,0,0], 'r-')
-            line3, = plt.loglog(np.arange(0,len(eigs)),np.abs(Gmatrix2[:,0,0]), 'r-')   
+            line3, = plt.loglog(np.arange(1,len(eigs)),np.abs(Gmatrix2[1:,0,0]), '--k')   
             
         return np.abs(Gmatrix2)                 
     else:
@@ -376,8 +381,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             
         if Visual==True:
             
-            fig = plt.figure()
-            plt.ion()
+            # fig = plt.figure()
+            # plt.ion()
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(omega_range[1], max_omega)
             #########use the /2pi rescaling if want temporal frequency
@@ -388,47 +393,54 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
 
             surf_plot=False
             if surf_plot==True:
+                fig = plt.figure()
+                plt.ion()
                 ax = fig.add_subplot(121,projection='3d')
                               
-                X, Y = np.meshgrid(np.arange(0,len(eigs)),omegas/(2*np.pi))
+                X, Y = np.meshgrid(np.arange(1,len(eigs)+1),omegas/(2*np.pi))
                 ax.plot_surface(X,Y,E_Full_Spectrum.T)#,norm=pltcolors.LogNorm())
                 ax_2 = fig.add_subplot(122,projection='3d')
                 ax_2.plot_surface(X,Y,I_Full_Spectrum.T)
 
             else:
-                ax = fig.add_subplot(121)                
+                plt.figure()                
 
-                ax.set_xscale('log')            
-                ax.set_yscale('log')
+                plt.xscale('log')            
+                plt.yscale('log')
 
-                ax.set_xlabel("Spatial Eigenmode ($k$)")
-                ax.set_ylabel("Temporal Frequency (Hz)")           
-                ax.set_title("Spatiotemporal Power Spectrum", pad=15) 
-                ax.set_xlim(1, len(eigs))
+                plt.xlabel("Harmonic Eigenmode ($k$)")
+                plt.ylabel("Temporal Frequency (Hz)")           
+                plt.title("Excitatory Harmonic-Temporal Power Spectrum", pad=15) 
+                plt.xlim(1, len(eigs))
                 plt.minorticks_off()
 
-                pc=ax.pcolormesh(np.arange(0,len(eigs)),omegas/(2*np.pi),E_Full_Spectrum.T,norm=pltcolors.LogNorm())
+                pc=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),E_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm(), cmap='jet')
                 
                 plt.yticks(ticks=[1,10,20,30,40], labels=['1','10','20','30','40'])
 
-                fig.colorbar(pc)
+                plt.colorbar(pc)
 
-                ax_2 = fig.add_subplot(122)                
+                plt.figure()             
 
-                ax_2.set_xscale('log')            
-                ax_2.set_yscale('log')
+                plt.xscale('log')            
+                plt.yscale('log')
 
-                ax_2.set_xlabel("Spatial Eigenmode ($ks$)")
-                ax_2.set_ylabel("Temporal Frequency (Hz)")           
-                ax_2.set_title("Spatiotemporal Power Spectrum", pad=15) 
-                ax_2.set_xlim(1, len(eigs))
+                plt.xlabel("Harmonic Eigenmode ($k$)")
+                plt.ylabel("Temporal Frequency (Hz)")           
+                plt.title("Inhibitory Harmonic-temporal Power Spectrum", pad=15) 
+                plt.xlim(1, len(eigs))
                 plt.minorticks_off()
 
-                pc_2=ax_2.pcolormesh(np.arange(0,len(eigs)),omegas/(2*np.pi),I_Full_Spectrum.T,norm=pltcolors.LogNorm())
+                pc_2=plt.pcolormesh(np.arange(1,len(eigs)),omegas/(2*np.pi),I_Full_Spectrum.T[:,1:],norm=pltcolors.LogNorm(), cmap='jet')
                 
                 plt.yticks(ticks=[1,10,20,30,40], labels=['1','10','20','30','40'])
 
-                fig.colorbar(pc_2)            
+                plt.colorbar(pc_2)        
+                
+                plt.figure()
+                plt.xlabel("Temporal Frequency (Hz)")
+                plt.title("Temporal Power Spectrum")
+                plt.loglog(omegas/(2*np.pi), 2*np.sum(E_Full_Spectrum.T, axis=1),'--k')
             
             
         return E_Full_Spectrum.T, I_Full_Spectrum.T
@@ -438,7 +450,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
    
 
 
-def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
+def Functional_Connectivity(eigvecs, PS, Visual=False):
     U=eigvecs
     covariance = np.dot(U,np.dot(np.diag(PS),U.T))
     FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))
@@ -447,8 +459,9 @@ def Functional_Connectivity(eigvecs, PS, one_dim=True, Visual=False):
         fig3 = plt.figure()
         ax = fig3.add_subplot(111)
         ax.set_title("Functional Connectivity (CHAOSS prediction)", pad=15)
-        fc_plot=ax.imshow(FC, vmin=-0.1, vmax=0.1)
+        fc_plot=ax.imshow(FC, vmin=0.0, vmax=0.2, cmap='inferno')
         fig3.colorbar(fc_plot)
+        
     
 #        else:
 #            from plotly.offline import init_notebook_mode,  plot
@@ -752,7 +765,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                         
                     
                     if Visual==True:
-                        plt.savefig(filepath+"Power Spectrum.png")   
+                        plt.savefig(filepath+"Power Spectrum.pdf")   
                     
                         
                 #if G[3,0,0]-G[-3,0,0]<=1:
@@ -786,8 +799,11 @@ def construct_fibers_from_data(filepath_data,
                                output_filepath_fiber_ends=None):
     
     #important: this sets which fiber dataset is used for computation of edges
-    with h5py.File(filepath_Fibers, 'r') as file:
-        Fibers=[file[element][:] for element in file['fg']['fibers'][0]]
+    if filepath_Fibers.endswith('.npy'):
+        Fibers = np.load(filepath_Fibers,allow_pickle=True)
+    else:
+        with h5py.File(filepath_Fibers, 'r') as file:
+            Fibers=[file[element][:] for element in file['fgCC']['fibers'][0]]
         
     with h5py.File(filepath_data, 'r') as file:    
         AllVet=np.asarray(file['vertices']['all'])    
