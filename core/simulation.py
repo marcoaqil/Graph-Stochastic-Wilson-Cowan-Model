@@ -546,7 +546,8 @@ def Activity_Analysis(Ess, Iss, Delta_t,
  
     if compute_FC==True:   
         covariance = np.cov(E_total_fluctuations)
-        FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))    
+        #FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))
+        FC = np.corrcoef(E_total_fluctuations)
     
     print("All simulation activity measures completed.")
     if prediction==True:
