@@ -14,7 +14,7 @@ plt.tight_layout()
 ####################################################################################################
 #written for python 3.6 
 
-def GraphKernel(x,t,type='Gaussian', a=1, b=1, c=1, prime=False):
+def GraphKernel(x,t,type='Gaussian', a=10**3, b=10, c=0, prime=False):
     if t<0:
         print("Need positive kernel parameter")
         return
@@ -227,7 +227,10 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
 def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=None, Iss=None, 
                        alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1, 
                        sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
-                       tau_e=1, tau_i=1, Visual=False):
+                       tau_e=1, tau_i=1, 
+                       aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                       Visual=False):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -248,12 +251,16 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     
     a = d_e*Ess*(1-d_e*Ess)
     b = d_i*Iss*(1-d_i*Iss)
+
+    K_EE = GraphKernel(eigs,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)
+    K_IE = GraphKernel(eigs,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)
+    K_EI = GraphKernel(eigs,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)
+    K_II = GraphKernel(eigs,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)
     
- 
     
-    Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*a*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e - alpha_II*b*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i
+    Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*a*K_EE/tau_e - alpha_II*b*K_II/tau_i
     
-    Determinant = -alpha_EE*alpha_II*a*b*GraphKernel(eigs,t_EE+t_II,type=Graph_Kernel)/(tau_e*tau_i) - alpha_EE*a*d_i*GraphKernel(eigs,t_EE,type=Graph_Kernel)/(tau_e*tau_i) + alpha_II*b*d_e*GraphKernel(eigs,t_II,type=Graph_Kernel)/(tau_e*tau_i) + alpha_IE*alpha_EI*a*b*GraphKernel(eigs,t_EI+t_IE,type=Graph_Kernel) + d_e*d_i/(tau_e*tau_i)
+    Determinant = -alpha_EE*alpha_II*a*b*K_EE*K_II/(tau_e*tau_i) - alpha_EE*a*d_i*K_EE/(tau_e*tau_i) + alpha_II*b*d_e*K_II/(tau_e*tau_i) + alpha_IE*alpha_EI*a*b*K_EI*K_IE + d_e*d_i/(tau_e*tau_i)
     
     
     Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
@@ -318,6 +325,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                        alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1,
                        sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1,
                        tau_e=1, tau_i=1,
+                       aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                        sigma_noise_e=1, sigma_noise_i=1, min_omega=0, max_omega=100, delta_omega=0.1,
                        Spatial_Spectrum_Only=True, Visual=False):
     
@@ -326,6 +335,11 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
     t_EI = (0.5*sigma_EI**2)/D    
     t_II = (0.5*sigma_II**2)/D
     eigs=Laplacian_eigenvalues
+
+    K_EE = GraphKernel(eigs,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)
+    K_IE = GraphKernel(eigs,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)
+    K_EI = GraphKernel(eigs,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)
+    K_II = GraphKernel(eigs,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)
    
     
     if Ess == None or Iss == None:
@@ -338,19 +352,15 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
     
     Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
        
-    A = np.stack([[d_e/tau_e - a*alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)/tau_e, a*alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)/tau_e],[-b*alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)/tau_i, d_i/tau_i + b*alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)/tau_i ]])
+    A = np.stack([[d_e/tau_e - a*alpha_EE*K_EE/tau_e, a*alpha_IE*K_IE/tau_e],[-b*alpha_EI*K_EI/tau_i, d_i/tau_i + b*alpha_II*K_II/tau_i ]])
     A = np.moveaxis(A,-1,0)
         
     if Spatial_Spectrum_Only==True:
         
         Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
-        G_EE = alpha_EE*GraphKernel(eigs,t_EE,type=Graph_Kernel)
-        G_IE = alpha_IE*GraphKernel(eigs,t_IE,type=Graph_Kernel)
-        G_EI = alpha_EI*GraphKernel(eigs,t_EI,type=Graph_Kernel)
-        G_II = alpha_II*GraphKernel(eigs,t_II,type=Graph_Kernel)
         
-        Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*G_EE+d_i*tau_e+b*tau_e*G_II))*((tau_i/tau_e) + ((a**2)*(G_IE**2)+ (d_i + b*G_II)**2)/(d_e*d_i+ (d_e*b*G_II) - (a*d_i*G_EE) - a*b*(G_EE*G_II-G_EI*G_IE)))
+        Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*alpha_EE*K_EE+d_i*tau_e+b*tau_e*alpha_II*K_II))*((tau_i/tau_e) + ((a**2)*((alpha_IE*K_IE)**2)+ (d_i + b*alpha_II*K_II)**2)/(d_e*d_i+ (d_e*b*alpha_II*K_II) - (a*d_i*alpha_EE*K_EE) - a*b*(alpha_EE*K_EE*alpha_II*K_II-alpha_EI*K_EI*alpha_IE*K_IE)))
         
         #i cannot currently be bothered to write this down in terms of the parameters explicitly
         Gmatrix2[:,1,1] = 0.5*(Dmatrix[1,1] + (Dmatrix[0,0]*A[:,1,0]**2+Dmatrix[1,1]*A[:,0,0]**2) / (A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]))/(A[:,0,0]+A[:,1,1])
@@ -479,7 +489,8 @@ def Functional_Connectivity(eigvecs, PS, Visual=False):
 ####################################################################################################    
 def NF_to_empirical(x, e_s, i_s):
     
-    c_s =  x[0]*e_s#+x[1]
+    #c_s = e_s
+    c_s =  x[0]*e_s# +x[1]
     #c_s =  x[0]*e_s+x[1]*i_s+x[2]
     #c_s =  x[0]*(e_s*i_s)+x[1]
     #c_s =  x[0]*(e_s+i_s)+x[1]*(e_s*i_s)+x[2]
@@ -501,7 +512,8 @@ def find_scaling(x, e_s, i_s, t_s):
 ####################################################################################################    
 
 def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal_Spectrum=None, min_omega=0, max_omega=300, delta_omega=0.5,
-                  True_Spatial_Spectrum=None, first_k=2, last_k=None, bins=None, LSA=True, Visual=False, SaveFiles=False, Filepath=' '):
+                  True_Spatial_Spectrum=None, first_k=2, last_k=None, bins=None, LSA=True, Visual=False, SaveFiles=False, Filepath=' ',
+                  best_minDist = 800):
    
     alpha_EE=Parameters[0]
     alpha_IE=Parameters[1]
@@ -517,7 +529,27 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
     sigma_II=Parameters[11]
     D=1
     tau_e=Parameters[12] 
-    tau_i=Parameters[13] 
+    tau_i=Parameters[13]
+
+    if Graph_Kernel == 'Damped Wave':
+        aDW_EE=Parameters[14]
+        aDW_IE=Parameters[15]
+        aDW_EI=Parameters[16]
+        aDW_II=Parameters[17]
+        bDW_EE=Parameters[18]
+        bDW_IE=Parameters[19]
+        bDW_EI=Parameters[20]
+        bDW_II=Parameters[21]
+    else:
+        aDW_EE=0
+        aDW_IE=0
+        aDW_EI=0
+        aDW_II=0
+        bDW_EE=0
+        bDW_IE=0
+        bDW_EI=0
+        bDW_II=0
+
     #sigma_noise_e=Parameters[15] 
     #sigma_noise_i=Parameters[16]   #only one sigma noise=scale_param
     
@@ -551,8 +583,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
         #distance between eachSS power spectrum and true
         dist_spatial=np.zeros(nrSS)
         dist_temporal=np.zeros(nrSS)
-        scale_params_spatial=np.zeros((nrSS,2))
-        scale_params_temporal=np.zeros((nrSS,2))
+        scale_params_spatial=np.zeros((nrSS,1))
+        scale_params_temporal=np.zeros((nrSS,1))
                
             
         if True_Temporal_Spectrum is not None:
@@ -577,7 +609,10 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                 SStypes[ss], found_suitable, allJacEigs[ss,:,:] = GraphWC_Jacobian_TrDet(eigs, Graph_Kernel, Ess, Iss,                        
                                                  alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                  sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
-                                                 tau_e, tau_i,False)    
+                                                 tau_e, tau_i,
+                                                 aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                                                 bDW_EE, bDW_IE, bDW_EI, bDW_II, 
+                                                 False)    
                 
         
         
@@ -593,7 +628,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     all_spatial_spectra[ss,:,:,:] = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
                                                   alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                   sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
-                                                  tau_e, tau_i, 
+                                                  tau_e, tau_i,                                                 
+                                                  aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                                                  bDW_EE, bDW_IE, bDW_EI, bDW_II, 
                                                   sigma_noise_e=sigma_noise, sigma_noise_i=sigma_noise,
                                                   Spatial_Spectrum_Only=True, Visual=False)
                     
@@ -607,14 +644,15 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                         I_spatial_spectrum = np.array([np.median(elem) for elem in np.array_split(all_spatial_spectra[ss,first_k:last_k,1,1], bins)])                                           
                         SPS_points = np.array([elem.mean() for elem in np.array_split(np.arange(first_k,last_k), bins)])
                             
-#                    a_matrix_spatial = np.vstack((E_spatial_spectrum,
-#                                                  #I_spatial_spectrum,
-#                                                  #E_spatial_spectrum*I_spatial_spectrum,
-#                                                  np.zeros_like(True_Spatial_Spectrum))).T
-#                    scale_params_spatial[ss,:] = np.linalg.lstsq(a_matrix_spatial, True_Spatial_Spectrum)[0]
+                    # a_matrix_spatial = np.vstack((E_spatial_spectrum,
+                    #                              I_spatial_spectrum,
+                    #                              #E_spatial_spectrum*I_spatial_spectrum,
+                    #                              np.ones_like(True_Spatial_Spectrum))).T
+                    #scale_params_spatial[ss,:] = np.linalg.lstsq(a_matrix_spatial, True_Spatial_Spectrum)[0]
                     
-                    scale_params_spatial[ss,:] = sp.optimize.fmin(find_scaling, x0=[1e4], args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum), disp=0)
-                    
+                    #normally use this
+                    #scale_params_spatial[ss,:] = sp.optimize.fmin(find_scaling, x0=[1e4], args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum), disp=0)
+                    scale_params_spatial[ss,:] = (True_Spatial_Spectrum.mean())/(E_spatial_spectrum.mean())
 #                    n_spatial = len(True_Spatial_Spectrum)    
 #                    a_spatial = (n_spatial*np.dot(E_spatial_spectrum,True_Spatial_Spectrum)-np.sum(True_Spatial_Spectrum)*np.sum(E_spatial_spectrum))/(n_spatial*np.dot(E_spatial_spectrum,E_spatial_spectrum)-np.sum(E_spatial_spectrum)**2)
 #                    b_spatial = (np.sum(True_Spatial_Spectrum)-a_spatial*np.sum(E_spatial_spectrum))/n_spatial
@@ -627,18 +665,25 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     
                     rescaled_spatial_spectra[ss,:] = np.copy(current_spatial_spectrum)
                     
-                    data_1=np.vstack((SPS_points, np.log10(True_Spatial_Spectrum))).T
-                    data_2=np.vstack((SPS_points, np.log10(current_spatial_spectrum))).T                    
-                    dist_spatial[ss] = sm.area_between_two_curves(data_1,data_2)#np.linalg.norm(np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#sm.area_between_two_curves(data_1,data_2)#np.linalg.norm((np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#np.linalg.norm(True_Spatial_Spectrum - a_spatial*current_spatial_spectrum-b_spatial, ord=2)#1-sp.stats.ks_2samp(True_Spatial_Spectrum, current_spatial_spectrum*a_spatial+b_spatial)[1]#1-np.ma.corrcoef(True_Spatial_Spectrum, current_spatial_spectrum)[0,1]#
+                    #data_1=np.vstack((SPS_points, np.log10(True_Spatial_Spectrum))).T
+                    #data_2=np.vstack((SPS_points, np.log10(current_spatial_spectrum))).T   
+
+                    #dist_spatial[ss] = sm.area_between_two_curves(data_1,data_2)
+
+                    #np.linalg.norm(np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#sm.area_between_two_curves(data_1,data_2)#np.linalg.norm((np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#np.linalg.norm(True_Spatial_Spectrum - a_spatial*current_spatial_spectrum-b_spatial, ord=2)#1-sp.stats.ks_2samp(True_Spatial_Spectrum, current_spatial_spectrum*a_spatial+b_spatial)[1]#1-np.ma.corrcoef(True_Spatial_Spectrum, current_spatial_spectrum)[0,1]#
                     
-                    dist_spatial[ss] += np.linalg.norm(np.log10(True_Spatial_Spectrum)-np.log10(current_spatial_spectrum), ord=1)**2
+                    dist_spatial[ss] = np.linalg.norm(np.log10(True_Spatial_Spectrum)-np.log10(current_spatial_spectrum), ord=2)**2
+
+                    #dist_spatial[ss] = np.corrcoef(np.log10(current_spatial_spectrum),np.log10(True_Spatial_Spectrum))[0,1]
                     
                     
                 if True_Temporal_Spectrum is not None:
                     E_Spectrum, I_Spectrum = Graph_WC_Spatiotemporal_PowerSpectrum(eigs, Graph_Kernel, Ess, Iss, 
                                                   alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                   sigma_EE, sigma_IE, sigma_EI, sigma_II, D,                      
-                                                  tau_e, tau_i, 
+                                                  tau_e, tau_i,                                                 
+                                                  aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                                                  bDW_EE, bDW_IE, bDW_EI, bDW_II, 
                                                   sigma_noise_e=1, sigma_noise_i=1,
                                                   min_omega=min_omega, max_omega=max_omega, delta_omega=delta_omega,
                                                   Spatial_Spectrum_Only=False, Visual=False)
@@ -646,13 +691,15 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     E_temporal_spectrum[ss,:] = 2*np.sum(E_Spectrum,axis=1)
                     I_temporal_spectrum[ss,:] = 2*np.sum(I_Spectrum,axis=1)
                                         
-                    a_matrix_temporal = np.vstack((E_temporal_spectrum[ss,:],
-                                                   #I_temporal_spectrum[ss,:],
-                                                   #E_temporal_spectrum[ss,:]*I_temporal_spectrum[ss,:],
-                                                   np.ones_like(True_Temporal_Spectrum))).T
-                    scale_params_temporal[ss,:] = np.linalg.lstsq(a_matrix_temporal, True_Temporal_Spectrum)[0]
+                    # a_matrix_temporal = np.vstack((E_temporal_spectrum[ss,:],
+                    #                                I_temporal_spectrum[ss,:],
+                    #                                #E_temporal_spectrum[ss,:]*I_temporal_spectrum[ss,:],
+                    #                                np.ones_like(True_Temporal_Spectrum))).T
+                    # scale_params_temporal[ss,:] = np.linalg.lstsq(a_matrix_temporal, True_Temporal_Spectrum)[0]
                     
-                    #scale_params_temporal[ss,:] = sp.optimize.fmin(find_scaling, x0=[1,1,1,1], args=(E_temporal_spectrum[ss,:],I_temporal_spectrum[ss,:],True_Temporal_Spectrum), disp=0)
+                    #normally use this
+                    #scale_params_temporal[ss,:] = sp.optimize.fmin(find_scaling, x0=[1,0,0], args=(E_temporal_spectrum[ss,:],I_temporal_spectrum[ss,:],True_Temporal_Spectrum), disp=0)
+                    scale_params_temporal[ss,:] = (True_Temporal_Spectrum.mean())/(E_temporal_spectrum.mean())
                     
                     current_temporal_spectrum = NF_to_empirical(scale_params_temporal[ss,:],
                                                                 E_temporal_spectrum[ss,:],
@@ -661,22 +708,31 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     
                     rescaled_temporal_spectra[ss,:] = np.copy(current_temporal_spectrum)
                     
-                    data_3=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(True_Temporal_Spectrum))).T
-                    data_4=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(current_temporal_spectrum))).T        
-                    dist_temporal[ss] = sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(np.log10(True_Temporal_Spectrum) - np.log10(current_temporal_spectrum), ord=1)#sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(True_Temporal_Spectrum - current_temporal_spectrum, ord=1)##np.linalg.norm(True_Temporal_Spectrum - a_temporal*current_temporal_spectrum-b_temporal, ord=2)#1-sp.stats.ks_2samp(True_Temporal_Spectrum, current_temporal_spectrum*a_temporal+b_temporal)[1]#1-np.ma.corrcoef(True_Temporal_Spectrum, current_temporal_spectrum)[0,1]#
-                    #dist_temporal[ss] = np.linalg.norm(np.log10(True_Temporal_Spectrum)-np.log10(current_temporal_spectrum), ord=2)
+                    #data_3=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(True_Temporal_Spectrum))).T
+                    #data_4=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(current_temporal_spectrum))).T        
+                    #dist_temporal[ss] = sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(np.log10(True_Temporal_Spectrum) - np.log10(current_temporal_spectrum), ord=1)#sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(True_Temporal_Spectrum - current_temporal_spectrum, ord=1)##np.linalg.norm(True_Temporal_Spectrum - a_temporal*current_temporal_spectrum-b_temporal, ord=2)#1-sp.stats.ks_2samp(True_Temporal_Spectrum, current_temporal_spectrum*a_temporal+b_temporal)[1]#1-np.ma.corrcoef(True_Temporal_Spectrum, current_temporal_spectrum)[0,1]#
+                    dist_temporal[ss] = np.linalg.norm(np.log10(True_Temporal_Spectrum)-np.log10(current_temporal_spectrum), ord=2)**2
+
+                    #dist_temporal[ss] = np.corrcoef(np.log10(True_Temporal_Spectrum),np.log10(current_temporal_spectrum))[0,1]
                             
             ########*******######
             #important: insert here a metric to quantify distance between true spectrum and calculated
             ######****######
             
             #currently giving a stronger weight to the temporal distance
-            Dist=(1+dist_temporal)**1+(1+dist_spatial)**1#(3*dist_temporal)**2+10**(dist_spatial)
+            Dist=(1+dist_temporal)**2+(1+dist_spatial)**1#(3*dist_temporal)**2+10**(dist_spatial)
+
+            
   
             mask = np.argwhere((SStypes!=0)) #* (scale_params_spatial[:,0]>0)) 
             if ~np.all(np.isnan(Dist[mask])):# and np.abs((a_temporal+np.abs(b_temporal)+a_spatial+np.abs(b_spatial)))<1e13:
                 bestSSS = mask[np.nanargmin(Dist[mask])][0]
                 minDist=Dist[bestSSS]
+
+                if minDist<best_minDist:
+                    best_minDist = np.copy(minDist)
+                    print(repr(Parameters))
+
                  
                 if True_Spatial_Spectrum is not None:
                     best_spatial_spectrum = rescaled_spatial_spectra[bestSSS,:]
@@ -686,7 +742,12 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
 
 
                  
-                print("Best suitable steady state: %d, with Ess=%.4g Iss=%.4g.\nDist spatial: %.4g, scale: *%.4g. +%.4g \nDist temporal: %.4g, scale: *%.4g +%.4g\n"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], dist_spatial[bestSSS], scale_params_spatial[bestSSS,0], scale_params_spatial[bestSSS,0], dist_temporal[bestSSS], scale_params_temporal[bestSSS,0], scale_params_temporal[bestSSS,0]))
+                #print("Best suitable steady state: %d, with Ess=%.4g Iss=%.4g.\nDist spatial: %.4g, scale: *%.4g. +%.4g \nDist temporal: %.4g, scale: *%.4g +%.4g\n"%(bestSSS, steady_states[0,bestSSS], steady_states[1,bestSSS], dist_spatial[bestSSS], scale_params_spatial[bestSSS,0], scale_params_spatial[bestSSS,0], dist_temporal[bestSSS], scale_params_temporal[bestSSS,0], scale_params_temporal[bestSSS,0]))
+
+                print(f"Best suitable steady state: {bestSSS}, with Ess={steady_states[0,bestSSS]:.4g} Iss={steady_states[1,bestSSS]:.4g}. \
+                      \nDist spatial: {dist_spatial[bestSSS]:.4g}, scale params: {scale_params_spatial[bestSSS]}  \
+                      \nDist temporal: {dist_temporal[bestSSS]:.4g}, scale params: {scale_params_temporal[bestSSS]}\n\
+                       total dist: {minDist:.4g}")
 
                 
                 plt.ioff()
