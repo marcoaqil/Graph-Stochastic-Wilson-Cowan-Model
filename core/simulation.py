@@ -358,7 +358,10 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
 def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                           alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
                           sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
-                          d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
+                          d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
+                       aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                          sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
 
@@ -385,10 +388,10 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     beta_I_0 = np.zeros(len(s), dtype='float64')
      
             
-    prop_EE = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)).astype('float64')
-    prop_IE = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)).astype('float64')
-    prop_EI = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)).astype('float64')
-    prop_II = (alpha_II * GraphKernel(s, t_II, Graph_Kernel)).astype('float64')
+    prop_EE = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE)).astype('float64')
+    prop_IE = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE)).astype('float64')
+    prop_EI = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI)).astype('float64')
+    prop_II = (alpha_II * GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II)).astype('float64')
     
     beta_E_Delta_t = np.zeros_like(beta_E_0)
     beta_I_Delta_t = np.zeros_like(beta_I_0)
@@ -419,6 +422,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     
     for i in range(Timesteps):
+        
          
         if sigma_noise_e!=0 or sigma_noise_i!=0:
             Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])).astype('float64')
@@ -435,7 +439,8 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             
             
         if i%10 == 0:
-            print(i)   
+            print(i)
+            print(beta_E_0.mean())   
             if Visual==True:
             
                 ax.clear()

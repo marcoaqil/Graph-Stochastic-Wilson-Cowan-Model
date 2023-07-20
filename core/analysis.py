@@ -41,7 +41,7 @@ def GraphKernel(x,t,type='Gaussian', a=10**3, b=10, c=0, prime=False):
             Damped_Wave_Kernel_prime=(sp.exp(r_1*t)-sp.exp(r_2*t))/(r_1-r_2)
             if np.any(Damped_Wave_Kernel.imag!=0) or np.any(Damped_Wave_Kernel_prime.imag!=0):
                 print("Imaginary value in kernel")
-                return
+                return Damped_Wave_Kernel.real
             else:
                 if prime==True:
                     return Damped_Wave_Kernel.real, Damped_Wave_Kernel_prime.real
@@ -281,7 +281,7 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     if np.any(Jacobian_eigenvalues.real>=0) or np.any(np.isnan(Jacobian_eigenvalues)):
         print("E*=%.4f, I*=%.4f: unstable"%(Ess,Iss))
         SStype=0
-        suitable = False
+        suitable = True
     else:
                   
         if np.all(Jacobian_eigenvalues.real<0) and np.all(Jacobian_eigenvalues.imag==0):
@@ -616,7 +616,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                 
         
         
-        if np.any(SStypes!=0):  
+        if np.any(SStypes!=10):  
 
             for ss in range(len(steady_states[0])):
                 
@@ -672,7 +672,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
 
                     #np.linalg.norm(np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#sm.area_between_two_curves(data_1,data_2)#np.linalg.norm((np.log10(True_Spatial_Spectrum) - np.log10(current_spatial_spectrum), ord=1)#np.linalg.norm(True_Spatial_Spectrum - a_spatial*current_spatial_spectrum-b_spatial, ord=2)#1-sp.stats.ks_2samp(True_Spatial_Spectrum, current_spatial_spectrum*a_spatial+b_spatial)[1]#1-np.ma.corrcoef(True_Spatial_Spectrum, current_spatial_spectrum)[0,1]#
                     
-                    dist_spatial[ss] = np.linalg.norm(np.log10(True_Spatial_Spectrum)-np.log10(current_spatial_spectrum), ord=2)**2
+                    dist_spatial[ss] = (1+np.linalg.norm(np.log10(True_Spatial_Spectrum)-np.log10(current_spatial_spectrum), ord=2))**2
+
+                    dist_spatial[ss] += (1+np.linalg.norm((np.log10(True_Spatial_Spectrum[1:])-np.log10(True_Spatial_Spectrum[:-1]))-(np.log10(current_spatial_spectrum[1:])-np.log10(current_spatial_spectrum[:-1])), ord=2))**2
 
                     #dist_spatial[ss] = np.corrcoef(np.log10(current_spatial_spectrum),np.log10(True_Spatial_Spectrum))[0,1]
                     
@@ -711,7 +713,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     #data_3=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(True_Temporal_Spectrum))).T
                     #data_4=np.vstack((np.arange(min_omega,max_omega,delta_omega),np.log10(current_temporal_spectrum))).T        
                     #dist_temporal[ss] = sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(np.log10(True_Temporal_Spectrum) - np.log10(current_temporal_spectrum), ord=1)#sm.area_between_two_curves(data_3,data_4)#np.linalg.norm(True_Temporal_Spectrum - current_temporal_spectrum, ord=1)##np.linalg.norm(True_Temporal_Spectrum - a_temporal*current_temporal_spectrum-b_temporal, ord=2)#1-sp.stats.ks_2samp(True_Temporal_Spectrum, current_temporal_spectrum*a_temporal+b_temporal)[1]#1-np.ma.corrcoef(True_Temporal_Spectrum, current_temporal_spectrum)[0,1]#
-                    dist_temporal[ss] = np.linalg.norm(np.log10(True_Temporal_Spectrum)-np.log10(current_temporal_spectrum), ord=2)**2
+                    dist_temporal[ss] = (1+np.linalg.norm(np.log10(True_Temporal_Spectrum)-np.log10(current_temporal_spectrum), ord=2))**3
+
+                    dist_temporal[ss] += (1+np.linalg.norm((np.log10(True_Temporal_Spectrum[1:])-np.log10(True_Temporal_Spectrum[:-1]))-(np.log10(current_temporal_spectrum[1:])-np.log10(current_temporal_spectrum[:-1])), ord=2))**5
 
                     #dist_temporal[ss] = np.corrcoef(np.log10(True_Temporal_Spectrum),np.log10(current_temporal_spectrum))[0,1]
                             
@@ -720,18 +724,23 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
             ######****######
             
             #currently giving a stronger weight to the temporal distance
-            Dist=(1+dist_temporal)**2+(1+dist_spatial)**1#(3*dist_temporal)**2+10**(dist_spatial)
+            if (scale_params_spatial+scale_params_temporal).sum()<10**6:
+                Dist=dist_temporal+dist_spatial#(3*dist_temporal)**2+10**(dist_spatial)
+            else:
+                Dist=10**7*np.ones_like(dist_temporal)
 
             
   
-            mask = np.argwhere((SStypes!=0)) #* (scale_params_spatial[:,0]>0)) 
+            mask = np.argwhere((SStypes!=10)) #* (scale_params_spatial[:,0]>0)) 
             if ~np.all(np.isnan(Dist[mask])):# and np.abs((a_temporal+np.abs(b_temporal)+a_spatial+np.abs(b_spatial)))<1e13:
+                Dist[SStypes==0] **= 2
                 bestSSS = mask[np.nanargmin(Dist[mask])][0]
                 minDist=Dist[bestSSS]
 
                 if minDist<best_minDist:
                     best_minDist = np.copy(minDist)
                     print(repr(Parameters))
+                
 
                  
                 if True_Spatial_Spectrum is not None:
