@@ -41,12 +41,13 @@ def GraphKernel(x,t,type='Gaussian', a=10**3, b=10, c=0, prime=False):
             Damped_Wave_Kernel_prime=(sp.exp(r_1*t)-sp.exp(r_2*t))/(r_1-r_2)
             if np.any(Damped_Wave_Kernel.imag!=0) or np.any(Damped_Wave_Kernel_prime.imag!=0):
                 #print("Imaginary value in kernel")
-                return Damped_Wave_Kernel.real
+                return np.inf*Damped_Wave_Kernel.real.astype('float64')
             else:
+                
                 if prime==True:
-                    return Damped_Wave_Kernel.real, Damped_Wave_Kernel_prime.real
+                    return Damped_Wave_Kernel.real.astype('float64'), Damped_Wave_Kernel_prime.real.astype('float64')
                 else:
-                    return Damped_Wave_Kernel.real
+                    return Damped_Wave_Kernel.real.astype('float64')
 
 
 ####################################################################################################
@@ -69,7 +70,7 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
         #AdjMatrix[499,500]=0
         #AdjMatrix[500,499]=0
         
-        speed_factor=200
+        speed_factor=50
         indices1=np.arange(250,250+syn)#(gridsize*np.random.rand(syn)).astype(int)#
         indices2=np.arange(750,750+syn)#(gridsize*np.random.rand(syn)).astype(int)#
         
@@ -150,14 +151,16 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
 #thresholding unique steady state if norm(x1-x2)<0.01    
 def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1, d_i=1, P=0, Q=0):
     #generate multiple initial conditions to find all steady states
-    initial_guesses = 5
+    initial_guesses = 10
     ##print("%.3g %.3g %.3g %.3g %.3g %.3g %.3g %.3g"%(alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i, P, Q))
 
-    x0 = np.zeros((2,initial_guesses))
-    x0[:,1] = np.array([1/(2*d_e), 1/(2*d_i)])
-    x0[:,2] = np.random.rand(2)
-    x0[:,3] = np.random.rand(2)
-    x0[:,4] = np.random.rand(2)
+    # x0 = np.zeros((2,initial_guesses))
+    # x0[:,1] = np.array([1/(2*d_e), 1/(2*d_i)])
+    # x0[:,2] = np.random.rand(2)
+    # x0[:,3] = np.random.rand(2)
+    # x0[:,4] = np.random.rand(2)
+
+    x0 = np.random.rand(2,initial_guesses)
     
     success = False
     results = np.zeros((2,initial_guesses))
@@ -172,11 +175,11 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     
     for i in range(initial_guesses):
         steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i,P,Q),
-                                          #xtol=1e-9, 
+                                          xtol=1e-8, 
                                           full_output=True) 
         
      #important line: conditions for success of SS calculation
-        if steady_state[0][0]>=0 and steady_state[0][1]>=0: # and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-20:
+        if steady_state[0][0]>=0 and steady_state[0][1]>=0 and steady_state[0][0]<=1 and steady_state[0][0]<=1: # and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-20:
             results[0,i]=steady_state[0][0]
             results[1,i]=steady_state[0][1]
             success=True
@@ -188,29 +191,30 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     if success==True:
 
         results = results[:,~np.all(np.isnan(results), axis=0)]    
-        uniques = np.unique(results, axis=1)
+
+        finals = results[:,np.unique(results.round(7), axis=1, return_index=True)[1]]
         
         #Further routine to select unique steady states up to some user-specified numerical tolerance   
-        tolerance=0.001
-        p=0
-        countSS=1
-        countoccurr=1
-        finals=np.copy(uniques)
+        # tolerance=0.001
+        # p=0
+        # countSS=1
+        # countoccurr=1
+        # finals=np.copy(uniques)
         
-        while p < len(uniques[0])-1:
-            diff = np.linalg.norm(uniques[:,p]-uniques[:,p+1], ord=2)
-            if diff < tolerance:
-                finals[:,p]+=uniques[:,p+1]
-                uniques=np.delete(uniques, p+1, axis=1)
-                finals=np.delete(finals,p+1,axis=1)
-                countoccurr+=1
-            else:
-                finals[:,p]/=countoccurr
-                countoccurr=1
-                countSS+=1
-                p+=1
+        # while p < len(uniques[0])-1:
+        #     diff = np.linalg.norm(uniques[:,p]-uniques[:,p+1], ord=2)
+        #     if diff < tolerance:
+        #         finals[:,p]+=uniques[:,p+1]
+        #         uniques=np.delete(uniques, p+1, axis=1)
+        #         finals=np.delete(finals,p+1,axis=1)
+        #         countoccurr+=1
+        #     else:
+        #         finals[:,p]/=countoccurr
+        #         countoccurr=1
+        #         countSS+=1
+        #         p+=1
                     
-        finals[:,p]/=countoccurr        
+        # finals[:,p]/=countoccurr        
         
     #    #print(str(len(finals[0]))+" unique steady states were found")        
        
@@ -249,22 +253,41 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
         Ess = 1/(2*d_e)
         Iss = 1/(2*d_i)
     
-    a = d_e*Ess*(1-d_e*Ess)
-    b = d_i*Iss*(1-d_i*Iss)
+    ass = d_e*Ess*(1-d_e*Ess)
+    bss = d_i*Iss*(1-d_i*Iss)
 
     K_EE = GraphKernel(eigs,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)
     K_IE = GraphKernel(eigs,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)
     K_EI = GraphKernel(eigs,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)
     K_II = GraphKernel(eigs,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)
+
+    #just an attempt to include the prime kernel for DW
+    # K_EE += GraphKernel(eigs,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE,prime=True)[1]
+    # K_IE += GraphKernel(eigs,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE,prime=True)[1]
+    # K_EI += GraphKernel(eigs,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI,prime=True)[1]
+    # K_II += GraphKernel(eigs,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II,prime=True)[1]  
     
+    #normal calculation, works for diffusion, doesnt seem to work for DW
+    # Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*ass*K_EE/tau_e - alpha_II*bss*K_II/tau_i  
+    # Determinant = -alpha_EE*alpha_II*ass*bss*K_EE*K_II/(tau_e*tau_i) - alpha_EE*ass*d_i*K_EE/(tau_e*tau_i) + alpha_II*bss*d_e*K_II/(tau_e*tau_i) + alpha_IE*alpha_EI*ass*bss*K_EI*K_IE + d_e*d_i/(tau_e*tau_i)
+
+    # Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
+    # Jacobian_eigenvalues[:,1]= (Trace - sp.sqrt(Trace**2 - 4*Determinant))/2.0   
+
     
-    Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*a*K_EE/tau_e - alpha_II*b*K_II/tau_i
+
+    #print(Full_jacobian.shape)
+
+    if np.all(np.isfinite(K_EE+K_EI+K_IE+K_II)):
+        Full_jacobian = np.array([[-d_e/tau_e + alpha_EE*ass*K_EE/tau_e, -alpha_IE*ass*K_IE/tau_e],[alpha_EI*bss*K_EI/tau_i,-d_i/tau_i -alpha_II*bss*K_II/tau_i]]).T
+
+        Jacobian_eigenvalues =np.linalg.eigvals(Full_jacobian)
+    else:
+        SStype=0
+        suitable = False
+        Jacobian_eigenvalues = np.ones((len(eigs),2))
     
-    Determinant = -alpha_EE*alpha_II*a*b*K_EE*K_II/(tau_e*tau_i) - alpha_EE*a*d_i*K_EE/(tau_e*tau_i) + alpha_II*b*d_e*K_II/(tau_e*tau_i) + alpha_IE*alpha_EI*a*b*K_EI*K_IE + d_e*d_i/(tau_e*tau_i)
-    
-    
-    Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
-    Jacobian_eigenvalues[:,1]= (Trace - sp.sqrt(Trace**2 - 4*Determinant))/2.0
+
     
     if Visual==True:
         plt.ion()
@@ -278,24 +301,33 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
         #ax.set_ylim(0, 20)
         plt.scatter(np.ravel(Jacobian_eigenvalues).real,np.ravel(Jacobian_eigenvalues).imag, marker='o', s=2, c=color, cmap='nipy_spectral')#, edgecolor='black', linewidth=0.1)
     
-    if np.any(Jacobian_eigenvalues.real>=0) or np.any(np.isnan(Jacobian_eigenvalues)):
-        ##print("E*=%.4f, I*=%.4f: unstable"%(Ess,Iss))
+    jacob_eig_max = -0.1
+    if np.any(Jacobian_eigenvalues.real>=jacob_eig_max) or np.any(np.isnan(Jacobian_eigenvalues)):
+        if Visual:
+            print(np.max(Jacobian_eigenvalues.real))
+            print("E*=%.4f, I*=%.4f: likely unstable"%(Ess,Iss))
         SStype=0
         suitable = True
     else:
                   
-        if np.all(Jacobian_eigenvalues.real<0) and np.all(Jacobian_eigenvalues.imag==0):
-            ##print("E*=%.4f, I*=%.4f: strictly stable"%(Ess,Iss))
+        if np.all(Jacobian_eigenvalues.real<jacob_eig_max) and np.all(Jacobian_eigenvalues.imag==0):
+            if Visual:
+                print(np.max(Jacobian_eigenvalues.real))
+                print("E*=%.4f, I*=%.4f: strictly stable"%(Ess,Iss))
             SStype=1
             suitable = True
       #all or any in the line below for imaginary? ask rikkert #do they all need imaginary parts?
-        elif np.all(Jacobian_eigenvalues.real<0) and np.any(Jacobian_eigenvalues.imag != 0):
-            ##print("E*=%.4f, I*=%.4f: stable, with nonzero imaginary components"%(Ess,Iss))
+        elif np.all(Jacobian_eigenvalues.real<jacob_eig_max) and np.any(Jacobian_eigenvalues.imag != 0):
+            if Visual:
+                print(np.max(Jacobian_eigenvalues.real))
+                print("E*=%.4f, I*=%.4f: stable, with nonzero imaginary components"%(Ess,Iss))
             SStype=2
             suitable = True
                 #same question here. what if some imaginary are zero and some nonzero?
         elif np.all(Jacobian_eigenvalues.real==0) and np.all(Jacobian_eigenvalues.imag != 0):
-            ##print("E*=%.4f, I*=%.4f: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
+            if Visual:
+                print(np.max(Jacobian_eigenvalues.real))
+                print("E*=%.4f, I*=%.4f: all purely imaginary eigenvalues (potential Hopf)"%(Ess,Iss))
             SStype=3
             suitable = True
           
@@ -347,12 +379,12 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         Ess = 1/(2*d_e)
         Iss = 1/(2*d_i)
     
-    a = d_e*Ess*(1-d_e*Ess)
-    b = d_i*Iss*(1-d_i*Iss)
+    ass = d_e*Ess*(1-d_e*Ess)
+    bss = d_i*Iss*(1-d_i*Iss)
     
     Dmatrix=np.array([[sigma_noise_e/tau_e,0],[0,sigma_noise_i/tau_i]])**2
        
-    A = np.stack([[d_e/tau_e - a*alpha_EE*K_EE/tau_e, a*alpha_IE*K_IE/tau_e],[-b*alpha_EI*K_EI/tau_i, d_i/tau_i + b*alpha_II*K_II/tau_i ]])
+    A = np.stack([[d_e/tau_e - ass*alpha_EE*K_EE/tau_e, ass*alpha_IE*K_IE/tau_e],[-bss*alpha_EI*K_EI/tau_i, d_i/tau_i + bss*alpha_II*K_II/tau_i ]])
     A = np.moveaxis(A,-1,0)
         
     if Spatial_Spectrum_Only==True:
@@ -360,7 +392,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
         
-        Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*a*alpha_EE*K_EE+d_i*tau_e+b*tau_e*alpha_II*K_II))*((tau_i/tau_e) + ((a**2)*((alpha_IE*K_IE)**2)+ (d_i + b*alpha_II*K_II)**2)/(d_e*d_i+ (d_e*b*alpha_II*K_II) - (a*d_i*alpha_EE*K_EE) - a*b*(alpha_EE*K_EE*alpha_II*K_II-alpha_EI*K_EI*alpha_IE*K_IE)))
+        Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*ass*alpha_EE*K_EE+d_i*tau_e+bss*tau_e*alpha_II*K_II))*((tau_i/tau_e) + ((ass**2)*((alpha_IE*K_IE)**2)+ (d_i + bss*alpha_II*K_II)**2)/(d_e*d_i+ (d_e*bss*alpha_II*K_II) - (ass*d_i*alpha_EE*K_EE) - ass*bss*(alpha_EE*K_EE*alpha_II*K_II-alpha_EI*K_EI*alpha_IE*K_IE)))
         
         #i cannot currently be bothered to write this down in terms of the parameters explicitly
         Gmatrix2[:,1,1] = 0.5*(Dmatrix[1,1] + (Dmatrix[0,0]*A[:,1,0]**2+Dmatrix[1,1]*A[:,0,0]**2) / (A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]))/(A[:,0,0]+A[:,1,1])
@@ -496,6 +528,8 @@ def NF_to_empirical(x, e_s, i_s):
     #c_s =  x[0]*(e_s+i_s)+x[1]*(e_s*i_s)+x[2]
     
     #c_s = x[0]*e_s+x[1]*i_s+x[2]*(e_s*i_s)+x[3]
+
+    #c_s =  (x[0]*e_s+x[1])/(x[2]*i_s+1)
     
     #to avoid log10 throwing tantrums. but of course no "good" spectrum should have negative values
     c_s[c_s<=0] = 1e-10
@@ -584,8 +618,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
         dist_spatial=np.zeros(nrSS)
         dist_temporal=np.zeros(nrSS)
         ###number of scaling params
-        scale_params_spatial=np.zeros((nrSS,1))
-        scale_params_temporal=np.zeros((nrSS,1))
+        scale_params_spatial=np.zeros((nrSS,3))
+        scale_params_temporal=np.zeros((nrSS,3))
                
             
         if True_Temporal_Spectrum is not None:
@@ -617,7 +651,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                 
         
         
-        if np.any(SStypes!=10):  
+        if np.any(SStypes!=0):  
 
             for ss in range(len(steady_states[0])):
                 
@@ -652,7 +686,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     #scale_params_spatial[ss,:] = np.linalg.lstsq(a_matrix_spatial, True_Spatial_Spectrum)[0]
                     
                     #normally use this
-                    scale_params_spatial[ss,:] = sp.optimize.fmin(find_scaling, x0=[1,0,0], ftol=1e-5, xtol=1e-5, args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum), disp=0)
+                    scale_params_spatial[ss,:] = sp.optimize.minimize(find_scaling, x0=[1,0,0], tol=1e-4, args=(E_spatial_spectrum,I_spatial_spectrum,True_Spatial_Spectrum),
+                                        bounds=[(0,1e5),(-1e5,1e5),(-1e5,1e5)])['x']
                     #scale_params_spatial[ss,:] = (True_Spatial_Spectrum.mean())/(E_spatial_spectrum.mean())
 #                    n_spatial = len(True_Spatial_Spectrum)    
 #                    a_spatial = (n_spatial*np.dot(E_spatial_spectrum,True_Spatial_Spectrum)-np.sum(True_Spatial_Spectrum)*np.sum(E_spatial_spectrum))/(n_spatial*np.dot(E_spatial_spectrum,E_spatial_spectrum)-np.sum(E_spatial_spectrum)**2)
@@ -701,7 +736,8 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                     # scale_params_temporal[ss,:] = np.linalg.lstsq(a_matrix_temporal, True_Temporal_Spectrum)[0]
                     
                     #normally use this
-                    scale_params_temporal[ss,:] = sp.optimize.fmin(find_scaling, x0=[1,0,0], ftol=1e-5, xtol=1e-5, args=(E_temporal_spectrum[ss,:],I_temporal_spectrum[ss,:],True_Temporal_Spectrum), disp=0)
+                    scale_params_temporal[ss,:] = sp.optimize.minimize(find_scaling, x0=[1,0,0], tol=1e-4, args=(E_temporal_spectrum[ss,:],I_temporal_spectrum[ss,:],True_Temporal_Spectrum),
+                                                                   bounds=[(0,1e5),(-1e5,1e5),(-1e5,1e5)])['x']
                     #scale_params_temporal[ss,:] = (True_Temporal_Spectrum.mean())/(E_temporal_spectrum.mean())
                     
                     current_temporal_spectrum = NF_to_empirical(scale_params_temporal[ss,:],
@@ -732,9 +768,9 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
 
             
   
-            mask = np.argwhere((SStypes!=10)) #* (scale_params_spatial[:,0]>0)) 
+            mask = np.argwhere((SStypes!=0)) #* (scale_params_spatial[:,0]>0)) 
             if ~np.all(np.isnan(Dist[mask])):# and np.abs((a_temporal+np.abs(b_temporal)+a_spatial+np.abs(b_spatial)))<1e13:
-                Dist[SStypes==0] **= 2
+                #Dist[SStypes==0] **= 2
                 bestSSS = mask[np.nanargmin(Dist[mask])][0]
                 minDist=Dist[bestSSS]
 

@@ -50,6 +50,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
         if GF_domain == False:
             Laplacian_based_propagator = np.dot(U, np.dot(sp.sparse.diags(kernel_gf).toarray(), U.T))
             Laplacian_based_propagator_prime = np.dot(U, np.dot(sp.sparse.diags(kernel_gf_prime).toarray(), U.T))
+            
 
         
         
@@ -65,7 +66,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(u_0))
-        #ax.set_ylim(0, 11)
+        ax.set_ylim(0, 0.1)
         
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')        
@@ -108,7 +109,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
-            #ax.set_ylim(-0.05,0.1)
+            ax.set_ylim(0,0.1)
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -150,17 +151,13 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
 ##GRAPH STOCHASTIC WILSON COWAN
 ##################################################################
 #compute the four diffusion operators beforehand
-def graph_WCM_propagators(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
-                          sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1,
+def graph_WCM_propagators(t_EE=10, t_IE=10, t_EI=10, t_II=10, 
+                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01,
                           eigvals=None, eigvecs=None):
     
-    t_EE = (0.5*sigma_EE**2)/D
-    t_IE = (0.5*sigma_IE**2)/D
-    t_EI = (0.5*sigma_EI**2)/D    
-    t_II = (0.5*sigma_II**2)/D
-    
-    ForceParallel=True
+
                 
     if one_dim==True:
         s,U = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
@@ -171,75 +168,116 @@ def graph_WCM_propagators(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
         V=eigvecs.T
            
      
-    if ForceParallel==True:   
-        diag_prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)
-        diag_prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)
-        diag_prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)
-        diag_prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel)  
-         
-        mask_EE = np.flatnonzero(diag_prop_EE)
-        mask_IE = np.flatnonzero(diag_prop_IE)
-        mask_EI = np.flatnonzero(diag_prop_EI)
-        mask_II = np.flatnonzero(diag_prop_II)
-        
-        EE_skip = diag_prop_EE[mask_EE]
-        IE_skip = diag_prop_IE[mask_IE]
-        EI_skip = diag_prop_EI[mask_EI]
-        II_skip = diag_prop_II[mask_II]
-            
-        prop_EEV = EE_skip[:,None] * V[mask_EE,:]
-        prop_IEV = IE_skip[:,None] * V[mask_IE,:]
-        prop_EIV = EI_skip[:,None] * V[mask_EI,:]
-        prop_IIV = II_skip[:,None] * V[mask_II,:]
-           
-        propagator_EE = transpose_parallel_dot(V[mask_EE,:], prop_EEV)     #np.dot(U, np.dot(s_exp_matrix_EE,V))  
-        propagator_IE = transpose_parallel_dot(V[mask_IE,:], prop_IEV)
-        propagator_EI = transpose_parallel_dot(V[mask_EI,:], prop_EIV)
-        propagator_II = transpose_parallel_dot(V[mask_II,:], prop_IIV)
+    if Graph_Kernel == 'Damped Wave':
+        diag_prop_EE, diag_prop_EE_prime = GraphKernel(s,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE, prime=True)
+        diag_prop_IE, diag_prop_IE_prime = GraphKernel(s,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE, prime=True)
+        diag_prop_EI, diag_prop_EI_prime = GraphKernel(s,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI, prime=True)
+        diag_prop_II, diag_prop_II_prime = GraphKernel(s,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II, prime=True)
+
+        propagator_EE, propagator_EE_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_EE).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_EE_prime).toarray(),V)) 
+        propagator_IE, propagator_IE_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_IE).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_IE_prime).toarray(),V))
+        propagator_EI, propagator_EI_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_EI).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_EI_prime).toarray(),V))
+        propagator_II, propagator_II_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_II).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_II_prime).toarray(),V))
+
+        return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64'), propagator_EE_prime.astype('float64'), propagator_IE_prime.astype('float64'), propagator_EI_prime.astype('float64'), propagator_II_prime.astype('float64')
     else:
-        diag_prop_EE = sp.sparse.diags(alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)).toarray()
-        diag_prop_IE = sp.sparse.diags(alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)).toarray()
-        diag_prop_EI = sp.sparse.diags(alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)).toarray()
-        diag_prop_II = sp.sparse.diags(alpha_II * GraphKernel(s, t_II, Graph_Kernel)).toarray()
-        
-        propagator_EE = np.dot(U, np.dot(diag_prop_EE,V))  
+        diag_prop_EE = sp.sparse.diags(GraphKernel(s,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)).toarray()
+        diag_prop_IE = sp.sparse.diags(GraphKernel(s,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)).toarray()
+        diag_prop_EI = sp.sparse.diags(GraphKernel(s,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)).toarray()
+        diag_prop_II = sp.sparse.diags(GraphKernel(s,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)).toarray()
+    
+        propagator_EE = np.dot(U, np.dot(diag_prop_EE,V))
         propagator_IE = np.dot(U, np.dot(diag_prop_IE,V))
         propagator_EI = np.dot(U, np.dot(diag_prop_EI,V))
         propagator_II = np.dot(U, np.dot(diag_prop_II,V))
         
     
-    return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64')
+        return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64'), 0,0,0,0
  
 #@jit(nopython=True, parallel=True)
 def transpose_parallel_dot(A, B):  
     return np.dot(A.T, B)
 
 #@jit(nopython=True, parallel=True)    
-def GWCM_Loop(E_0, I_0,  Delta_t,
-           propagator_EE, propagator_IE, propagator_EI, propagator_II, 
+def GWCM_Loop(E_0, I_0, Delta_t,
+              alpha_EE, alpha_IE, alpha_EI, alpha_II,
+           propagator_EE, propagator_IE, propagator_EI, propagator_II,
            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I):
     
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
     #print(I_0.dtype)
-    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(-np.dot(propagator_EE,np.float64(E_0)) + np.dot(propagator_IE,np.float64(I_0)) - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
-    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(-np.dot(propagator_EI,np.float64(E_0)) + np.dot(propagator_II,np.float64(I_0)) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
+
+    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(- alpha_EE * np.dot(propagator_EE,np.float64(E_0)) + alpha_IE * np.dot(propagator_IE,np.float64(I_0))  - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
+    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(- alpha_EI * np.dot(propagator_EI,np.float64(E_0)) + alpha_II * np.dot(propagator_II,np.float64(I_0)) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
+    #print(E_Delta_t.shape)
+    return E_Delta_t, I_Delta_t
+
+def GWCM_Loop_innertime(E_0, I_0, E_0_prime, I_0_prime, Delta_t,
+              alpha_EE, alpha_IE, alpha_EI, alpha_II,
+              t_EE,t_IE,t_EI,t_II,
+           propagator_EE, propagator_IE, propagator_EI, propagator_II,
+           propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime,
+           d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I):
+    
+    time_E = Delta_t/tau_e 
+    time_I = Delta_t/tau_i 
+
+    EE_0 = np.copy(E_0)
+    IE_0 = np.copy(I_0)
+    EI_0 = np.copy(E_0)  
+    II_0 = np.copy(I_0)
+
+    EE_0_prime = np.copy(E_0_prime)
+    IE_0_prime = np.copy(I_0_prime)
+    EI_0_prime = np.copy(E_0_prime)  
+    II_0_prime = np.copy(I_0_prime)
+
+    inner_time_factor = 1 #this whole thing is wrong, would need to make propagators with t divided by the inner time factor
+    for t in range(inner_time_factor):
+        EE_Delta_t = np.dot(propagator_EE,EE_0)+np.dot(propagator_EE_prime,EE_0_prime)
+        EE_0_prime = (EE_Delta_t-EE_0)/(t_EE/inner_time_factor)
+        EE_0 = np.copy(EE_Delta_t) 
+        IE_Delta_t = np.dot(propagator_IE,IE_0)+np.dot(propagator_IE_prime,IE_0_prime)
+        IE_0_prime = (IE_Delta_t-IE_0)/(t_IE/inner_time_factor)
+        IE_0 = np.copy(IE_Delta_t)  
+        EI_Delta_t = np.dot(propagator_EI,EI_0)+np.dot(propagator_EI_prime,EI_0_prime)
+        EI_0_prime = (EI_Delta_t-EI_0)/(t_EI/inner_time_factor)
+        EI_0 = np.copy(EI_Delta_t)
+ 
+        II_Delta_t = np.dot(propagator_II,II_0)+np.dot(propagator_II_prime,II_0_prime)
+        II_0_prime = (II_Delta_t-II_0)/(t_II/inner_time_factor)
+        II_0 = np.copy(II_Delta_t)  
+
+    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(- alpha_EE * EE_Delta_t  + alpha_IE * IE_Delta_t - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
+    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(- alpha_EI * EI_Delta_t + alpha_II * II_Delta_t - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
     #print(E_Delta_t.shape)
     return E_Delta_t, I_Delta_t
 
 #Wilson Cowan model 
 def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
-                          alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
+                          alpha_EE=100, alpha_IE=100, alpha_EI=100, alpha_II=100,
                           sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
-                          d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
+                          d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
+                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                          sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
                           Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
     
+    t_EE = (0.5*sigma_EE**2)/D
+    t_IE = (0.5*sigma_IE**2)/D
+    t_EI = (0.5*sigma_EI**2)/D    
+    t_II = (0.5*sigma_II**2)/D   
+
+    print(f"{t_EE} {t_IE} {t_EI} {t_II}")
+
+    inner_time = 1
     
-    
-    propagator_EE, propagator_IE, propagator_EI, propagator_II = graph_WCM_propagators(
-                       alpha_EE, alpha_IE, alpha_EI, alpha_II,
-                       sigma_EE, sigma_IE, sigma_EI, sigma_II, D,
+    propagator_EE, propagator_IE, propagator_EI, propagator_II, propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime = graph_WCM_propagators(
+                       t_EE/inner_time, t_IE/inner_time, t_EI/inner_time, t_II/inner_time, 
+                        aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                       bDW_EE, bDW_IE, bDW_EI, bDW_II,
                        Graph_Kernel, one_dim, syn, gridsize, h, eigvals,eigvecs)
     
     
@@ -266,7 +304,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(E_0))
-        ax.set_ylim(0, 1)
+        #ax.set_ylim(0, 1)
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')
         
@@ -287,16 +325,27 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         else:
             Noise_E = 0
             Noise_I = 0
-        #it turns out that the alphas ARE important, ie. at least manually, i cant get oscillations if i set them to one
-        #simply manipulating the sigmas doesnt appear to be enough for oscillations. analysis or systematic numerics would solve this
-        #impulse response    
-        # if i==500:
-        #     E_Delta_t[600:650]=0.9*np.ones(50)
-        #     I_Delta_t[580:620]=0.9*np.ones(40)
-        
-        E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0, Delta_t,
-                           propagator_EE, propagator_IE, propagator_EI, propagator_II, 
+
+        if i == 0:
+            E_0_prime = np.zeros_like(E_0)
+            I_0_prime = np.zeros_like(I_0)
+
+        if Graph_Kernel != 'Damped Wave':       
+            E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0,  Delta_t,
+                            alpha_EE, alpha_IE, alpha_EI, alpha_II,
+                           propagator_EE, propagator_IE, propagator_EI, propagator_II,
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
+
+        else:
+            E_Delta_t, I_Delta_t = GWCM_Loop_innertime(E_0, I_0, E_0_prime, I_0_prime, Delta_t,
+                     alpha_EE, alpha_IE, alpha_EI, alpha_II,
+                          t_EE,t_IE,t_EI,t_II,
+                        propagator_EE, propagator_IE, propagator_EI, propagator_II,
+                         propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime,
+                             d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
+            
+        #E_0_prime = (E_Delta_t-E_0)/Delta_t
+        #I_0_prime = (I_Delta_t-I_0)/Delta_t
         
         
          
@@ -307,11 +356,13 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                 Iss_numerical.append(np.mean(I_Delta_t))
             
 
-        if i%10 == 0:
+        if i%30 == 0:
             print(i)
+            print(np.abs(E_Delta_t-Ess).max())
+            print(np.abs(I_Delta_t-Iss).max())
             if Visual==True:
                 ax.clear()
-                ax.set_ylim(Ess-sigma_noise_e, Ess+sigma_noise_e)
+                ax.set_ylim(Ess-1e1*sigma_noise_e, Ess+1e1*sigma_noise_e)
                 #line2.set_ydata(I_Delta_t)
                 #line1.set_ydata(E_Delta_t)
                 ax.plot(I_Delta_t, 'b-')
@@ -356,7 +407,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
 #
 ##################################################################################
 def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
-                          alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
+                          alpha_EE=100, alpha_IE=100, alpha_EI=100, alpha_II=100,
                           sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
                           d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
@@ -373,8 +424,10 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     t_EI = (0.5*sigma_EI**2)/D    
     t_II = (0.5*sigma_II**2)/D   
     
-    a = d_e*Ess*(1-d_e*Ess)
-    b = d_i*Iss*(1-d_i*Iss)
+    ass = d_e*Ess*(1-d_e*Ess)
+    bss = d_i*Iss*(1-d_i*Iss)
+
+    print(f"{alpha_EE} {alpha_IE} {alpha_EI} {alpha_II}")
     
     #eigenvectors are used for plotting purposes only. 
     if one_dim==True:
@@ -387,11 +440,24 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     beta_E_0 = np.zeros(len(s), dtype='float64')
     beta_I_0 = np.zeros(len(s), dtype='float64')
      
-            
-    prop_EE = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE)).astype('float64')
-    prop_IE = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE)).astype('float64')
-    prop_EI = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI)).astype('float64')
-    prop_II = (alpha_II * GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II)).astype('float64')
+    if Graph_Kernel == 'Damped Wave':
+        prop_EE, prop_EE_prime = GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE, prime=True)
+        prop_IE, prop_IE_prime = GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE, prime=True)
+        prop_EI, prop_EI_prime = GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI, prime=True)
+        prop_II, prop_II_prime = GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II, prime=True)
+
+        prop_EE, prop_EE_prime = alpha_EE * prop_EE, 0#alpha_EE * prop_EE_prime
+        prop_IE, prop_IE_prime = alpha_IE * prop_IE, 0#alpha_IE * prop_IE_prime
+        prop_EI, prop_EI_prime = alpha_EI * prop_EI, 0#alpha_EI * prop_EI_prime
+        prop_II, prop_II_prime = alpha_II * prop_II, 0#alpha_II * prop_II_prime
+    else:
+        prop_EE, prop_EE_prime = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)).astype('float64'), 0
+        prop_IE, prop_IE_prime = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)).astype('float64'), 0
+        prop_EI, prop_EI_prime = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)).astype('float64'), 0
+        prop_II, prop_II_prime = (alpha_II * GraphKernel(s, t_II, Graph_Kernel)).astype('float64'), 0
+
+
+
     
     beta_E_Delta_t = np.zeros_like(beta_E_0)
     beta_I_Delta_t = np.zeros_like(beta_I_0)
@@ -422,7 +488,11 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     
     for i in range(Timesteps):
+        if i == 0:
+            beta_E_prime = np.zeros_like(beta_E_0)
+            beta_I_prime = np.zeros_like(beta_I_0)
         
+
          
         if sigma_noise_e!=0 or sigma_noise_i!=0:
             Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])).astype('float64')
@@ -431,16 +501,21 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             Noise_E = 0
             Noise_I = 0
                
-        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+a*prop_EE)*beta_E_0 - a*prop_IE*beta_I_0) + Noise_E*np.sqrt(Delta_t)/tau_e
-        beta_I_Delta_t = beta_I_0 + time_I*(b*prop_EI*beta_E_0 - (d_i+b*prop_II)*beta_I_0) + Noise_I*np.sqrt(Delta_t)/tau_i
+        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+ass*prop_EE)*beta_E_0 +ass*prop_EE_prime*beta_E_prime - ass*prop_IE*beta_I_0 - ass*prop_IE_prime*beta_I_prime) + Noise_E*np.sqrt(Delta_t)/tau_e
+        beta_I_Delta_t = beta_I_0 + time_I*(bss*prop_EI*beta_E_0 + bss*prop_EI_prime*beta_E_prime - (d_i+bss*prop_II)*beta_I_0 - bss*prop_II_prime*beta_I_prime) + Noise_I*np.sqrt(Delta_t)/tau_i
+
+
+        #beta_E_prime = (beta_E_Delta_t-beta_E_0)/Delta_t
+        #beta_I_prime = (beta_I_Delta_t-beta_I_0)/Delta_t
          
         if i>=1000:
             beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t).astype('float32')
             
             
-        if i%10 == 0:
+        if i%30 == 0:
             print(i)
-            print(beta_E_0.mean())   
+            print(np.abs(beta_E_0).max())   
+            print(np.abs(beta_I_0).max())
             if Visual==True:
             
                 ax.clear()
@@ -484,7 +559,10 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
 def Activity_Analysis(Ess, Iss, Delta_t,
                       alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1,
                       sigma_EE=10, sigma_IE=10, sigma_EI=10, sigma_II=10, D=1, 
-                      d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, sigma_noise_e=1, sigma_noise_i=1,
+                      d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
+                       aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
+                       bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                      sigma_noise_e=1, sigma_noise_i=1,
                       Graph_Kernel='Gaussian', 
                       E_total=None, beta_E_total=None, compute_FC=False,
                       prediction=False, min_omega=0, max_omega=100, delta_omega=0.1, temporal_downsampling=1,
@@ -550,7 +628,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             E_total_fluctuations[:,ts]=np.convolve(E_total[:,ts],hrf_signal,mode='same')
  
     if compute_FC==True:   
-        covariance = np.cov(E_total_fluctuations)
+        #covariance = np.cov(E_total_fluctuations)
         #FC=np.dot(np.diag(np.power(np.diag(covariance),-0.5)),np.dot(covariance,np.diag(np.power(np.diag(covariance),-0.5))))
         FC = np.corrcoef(E_total_fluctuations)
     
@@ -561,6 +639,9 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
+
+                                                        aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                                                        bDW_EE, bDW_IE, bDW_EI, bDW_II,    
                                                        sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega,
                                                        Spatial_Spectrum_Only=False, Visual=False)
          
@@ -568,6 +649,8 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                                                        alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i,
                                                        sigma_EE, sigma_IE, sigma_EI, sigma_II, D, 
                                                        tau_e, tau_i,
+                                                 aDW_EE, aDW_IE, aDW_EI, aDW_II,
+                                                 bDW_EE, bDW_IE, bDW_EI, bDW_II, 
                                                        sigma_noise_e, sigma_noise_i,
                                                        Spatial_Spectrum_Only=True, Visual=False)         
          
@@ -590,7 +673,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         plt.xlabel("Harmonic Eigenmode ($k$)")
         plt.title("Harmonic Power Spectrum")
         #ax.set_xlim(-0.1, 20000)
-        plt.ylim(1e-16, 1e-13)
+        #plt.ylim(1e-16, 1e-13)
         plt.xlim(0.8,len(eigvals)+1)
         
         line2, = plt.loglog(np.arange(1,len(eigvals)), PS[1:], '-r', label='Simulation')     
@@ -604,7 +687,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         plt.xlabel("Temporal Frequency (Hz)")
         plt.title("Temporal Power Spectrum")
         line3, = plt.loglog(frequencies, FTPS, '-r', label='Simulation')#'rs', label='Simulation', mec='black')        
-        plt.ylim(8*1e-16,3*1e-13)
+        #plt.ylim(8*1e-16,3*1e-13)
         plt.xlim(0.5,100)
         
         if prediction:
@@ -618,7 +701,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                 fig3 = plt.figure(figsize=(8,8))
                 ax = fig3.add_subplot(111)
                 ax.set_title("FC Matrix (Prediction)", pad=15)
-                plot_pred_FC = ax.imshow(predicted_FC, vmin=0.0, vmax=0.2, cmap='inferno')
+                plot_pred_FC = ax.imshow(predicted_FC, cmap='inferno')
                 fig3.colorbar(plot_pred_FC)
 
                 if Save_Results==True:    
@@ -627,7 +710,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             fig4 = plt.figure(figsize=(8,8))
             ax2 = fig4.add_subplot(111)
             ax2.set_title("FC Matrix (Simulation)", pad=15)
-            plot_actual_FC = ax2.imshow(FC, vmin=0.0, vmax=0.2, cmap='inferno')
+            plot_actual_FC = ax2.imshow(FC, cmap='inferno')
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
