@@ -4,7 +4,7 @@ from scipy import sparse
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from scipy import signal
-from random import gauss
+
 #import hdf5storage
 import h5py
 import timeit
@@ -167,32 +167,18 @@ def graph_WCM_propagators(t_EE=10, t_IE=10, t_EI=10, t_II=10,
         U=eigvecs
         V=eigvecs.T
            
-     
-    if Graph_Kernel == 'Damped Wave':
-        diag_prop_EE, diag_prop_EE_prime = GraphKernel(s,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE, prime=True)
-        diag_prop_IE, diag_prop_IE_prime = GraphKernel(s,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE, prime=True)
-        diag_prop_EI, diag_prop_EI_prime = GraphKernel(s,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI, prime=True)
-        diag_prop_II, diag_prop_II_prime = GraphKernel(s,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II, prime=True)
+    diag_prop_EE = sp.sparse.diags(GraphKernel(s,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)).toarray()
+    diag_prop_IE = sp.sparse.diags(GraphKernel(s,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)).toarray()
+    diag_prop_EI = sp.sparse.diags(GraphKernel(s,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)).toarray()
+    diag_prop_II = sp.sparse.diags(GraphKernel(s,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)).toarray()
 
-        propagator_EE, propagator_EE_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_EE).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_EE_prime).toarray(),V)) 
-        propagator_IE, propagator_IE_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_IE).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_IE_prime).toarray(),V))
-        propagator_EI, propagator_EI_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_EI).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_EI_prime).toarray(),V))
-        propagator_II, propagator_II_prime = np.dot(U, np.dot(sp.sparse.diags(diag_prop_II).toarray(),V)), np.dot(U, np.dot(sp.sparse.diags(diag_prop_II_prime).toarray(),V))
+    propagator_EE = np.dot(U, np.dot(diag_prop_EE,V))
+    propagator_IE = np.dot(U, np.dot(diag_prop_IE,V))
+    propagator_EI = np.dot(U, np.dot(diag_prop_EI,V))
+    propagator_II = np.dot(U, np.dot(diag_prop_II,V))
+    
 
-        return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64'), propagator_EE_prime.astype('float64'), propagator_IE_prime.astype('float64'), propagator_EI_prime.astype('float64'), propagator_II_prime.astype('float64')
-    else:
-        diag_prop_EE = sp.sparse.diags(GraphKernel(s,t_EE,type=Graph_Kernel,a=aDW_EE,b=bDW_EE)).toarray()
-        diag_prop_IE = sp.sparse.diags(GraphKernel(s,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE)).toarray()
-        diag_prop_EI = sp.sparse.diags(GraphKernel(s,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI)).toarray()
-        diag_prop_II = sp.sparse.diags(GraphKernel(s,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II)).toarray()
-    
-        propagator_EE = np.dot(U, np.dot(diag_prop_EE,V))
-        propagator_IE = np.dot(U, np.dot(diag_prop_IE,V))
-        propagator_EI = np.dot(U, np.dot(diag_prop_EI,V))
-        propagator_II = np.dot(U, np.dot(diag_prop_II,V))
-        
-    
-        return propagator_EE.astype('float64'), propagator_IE.astype('float64'), propagator_EI.astype('float64'), propagator_II.astype('float64'), 0,0,0,0
+    return propagator_EE, propagator_IE, propagator_EI, propagator_II
  
 #@jit(nopython=True, parallel=True)
 def transpose_parallel_dot(A, B):  
@@ -208,51 +194,11 @@ def GWCM_Loop(E_0, I_0, Delta_t,
     time_I = Delta_t/tau_i 
     #print(I_0.dtype)
 
-    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(- alpha_EE * np.dot(propagator_EE,np.float64(E_0)) + alpha_IE * np.dot(propagator_IE,np.float64(I_0))  - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
-    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(- alpha_EI * np.dot(propagator_EI,np.float64(E_0)) + alpha_II * np.dot(propagator_II,np.float64(I_0)) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
+    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(- alpha_EE * np.dot(propagator_EE,E_0) + alpha_IE * np.dot(propagator_IE,I_0)  - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
+    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(- alpha_EI * np.dot(propagator_EI,E_0) + alpha_II * np.dot(propagator_II,I_0) - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
     #print(E_Delta_t.shape)
     return E_Delta_t, I_Delta_t
 
-def GWCM_Loop_innertime(E_0, I_0, E_0_prime, I_0_prime, Delta_t,
-              alpha_EE, alpha_IE, alpha_EI, alpha_II,
-              t_EE,t_IE,t_EI,t_II,
-           propagator_EE, propagator_IE, propagator_EI, propagator_II,
-           propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime,
-           d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I):
-    
-    time_E = Delta_t/tau_e 
-    time_I = Delta_t/tau_i 
-
-    EE_0 = np.copy(E_0)
-    IE_0 = np.copy(I_0)
-    EI_0 = np.copy(E_0)  
-    II_0 = np.copy(I_0)
-
-    EE_0_prime = np.copy(E_0_prime)
-    IE_0_prime = np.copy(I_0_prime)
-    EI_0_prime = np.copy(E_0_prime)  
-    II_0_prime = np.copy(I_0_prime)
-
-    inner_time_factor = 1 #this whole thing is wrong, would need to make propagators with t divided by the inner time factor
-    for t in range(inner_time_factor):
-        EE_Delta_t = np.dot(propagator_EE,EE_0)+np.dot(propagator_EE_prime,EE_0_prime)
-        EE_0_prime = (EE_Delta_t-EE_0)/(t_EE/inner_time_factor)
-        EE_0 = np.copy(EE_Delta_t) 
-        IE_Delta_t = np.dot(propagator_IE,IE_0)+np.dot(propagator_IE_prime,IE_0_prime)
-        IE_0_prime = (IE_Delta_t-IE_0)/(t_IE/inner_time_factor)
-        IE_0 = np.copy(IE_Delta_t)  
-        EI_Delta_t = np.dot(propagator_EI,EI_0)+np.dot(propagator_EI_prime,EI_0_prime)
-        EI_0_prime = (EI_Delta_t-EI_0)/(t_EI/inner_time_factor)
-        EI_0 = np.copy(EI_Delta_t)
- 
-        II_Delta_t = np.dot(propagator_II,II_0)+np.dot(propagator_II_prime,II_0_prime)
-        II_0_prime = (II_Delta_t-II_0)/(t_II/inner_time_factor)
-        II_0 = np.copy(II_Delta_t)  
-
-    E_Delta_t = E_0 + time_E*(-d_e*E_0 + 1/(1+np.exp(- alpha_EE * EE_Delta_t  + alpha_IE * IE_Delta_t - P)))+ Noise_E*np.sqrt(Delta_t)/tau_e 
-    I_Delta_t = I_0 + time_I*(-d_i*I_0 + 1/(1+np.exp(- alpha_EI * EI_Delta_t + alpha_II * II_Delta_t - Q)))+ Noise_I*np.sqrt(Delta_t)/tau_i 
-    #print(E_Delta_t.shape)
-    return E_Delta_t, I_Delta_t
 
 #Wilson Cowan model 
 def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
@@ -271,11 +217,9 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     t_II = (0.5*sigma_II**2)/D   
 
     print(f"{t_EE} {t_IE} {t_EI} {t_II}")
-
-    inner_time = 1
     
-    propagator_EE, propagator_IE, propagator_EI, propagator_II, propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime = graph_WCM_propagators(
-                       t_EE/inner_time, t_IE/inner_time, t_EI/inner_time, t_II/inner_time, 
+    propagator_EE, propagator_IE, propagator_EI, propagator_II = graph_WCM_propagators(
+                       t_EE, t_IE, t_EI, t_II, 
                         aDW_EE, aDW_IE, aDW_EI, aDW_II,
                        bDW_EE, bDW_IE, bDW_EI, bDW_II,
                        Graph_Kernel, one_dim, syn, gridsize, h, eigvals,eigvecs)
@@ -320,34 +264,18 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     for i in range(Timesteps):
         if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(E_0))])).astype('float64')
-            Noise_I = (sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(I_0))])).astype('float64')
+            Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(E_0))
+            Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(I_0))
         else:
             Noise_E = 0
             Noise_I = 0
 
-        if i == 0:
-            E_0_prime = np.zeros_like(E_0)
-            I_0_prime = np.zeros_like(I_0)
-
-        if Graph_Kernel != 'Damped Wave':       
-            E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0,  Delta_t,
+               
+        E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0,  Delta_t,
                             alpha_EE, alpha_IE, alpha_EI, alpha_II,
                            propagator_EE, propagator_IE, propagator_EI, propagator_II,
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
-
-        else:
-            E_Delta_t, I_Delta_t = GWCM_Loop_innertime(E_0, I_0, E_0_prime, I_0_prime, Delta_t,
-                     alpha_EE, alpha_IE, alpha_EI, alpha_II,
-                          t_EE,t_IE,t_EI,t_II,
-                        propagator_EE, propagator_IE, propagator_EI, propagator_II,
-                         propagator_EE_prime, propagator_IE_prime, propagator_EI_prime, propagator_II_prime,
-                             d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
-            
-        #E_0_prime = (E_Delta_t-E_0)/Delta_t
-        #I_0_prime = (I_Delta_t-I_0)/Delta_t
-        
-        
+   
          
         if i>=1000:
             E_total[:,i-1000]=np.copy(E_Delta_t).astype('float32')
@@ -441,20 +369,10 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     beta_I_0 = np.zeros(len(s), dtype='float64')
      
     if Graph_Kernel == 'Damped Wave':
-        prop_EE, prop_EE_prime = GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE, prime=True)
-        prop_IE, prop_IE_prime = GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE, prime=True)
-        prop_EI, prop_EI_prime = GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI, prime=True)
-        prop_II, prop_II_prime = GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II, prime=True)
-
-        prop_EE, prop_EE_prime = alpha_EE * prop_EE, 0#alpha_EE * prop_EE_prime
-        prop_IE, prop_IE_prime = alpha_IE * prop_IE, 0#alpha_IE * prop_IE_prime
-        prop_EI, prop_EI_prime = alpha_EI * prop_EI, 0#alpha_EI * prop_EI_prime
-        prop_II, prop_II_prime = alpha_II * prop_II, 0#alpha_II * prop_II_prime
-    else:
-        prop_EE, prop_EE_prime = (alpha_EE * GraphKernel(s, t_EE, Graph_Kernel)).astype('float64'), 0
-        prop_IE, prop_IE_prime = (alpha_IE * GraphKernel(s, t_IE, Graph_Kernel)).astype('float64'), 0
-        prop_EI, prop_EI_prime = (alpha_EI * GraphKernel(s, t_EI, Graph_Kernel)).astype('float64'), 0
-        prop_II, prop_II_prime = (alpha_II * GraphKernel(s, t_II, Graph_Kernel)).astype('float64'), 0
+        prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE)
+        prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE)
+        prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI)
+        prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II)
 
 
 
@@ -488,37 +406,32 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     
     for i in range(Timesteps):
-        if i == 0:
-            beta_E_prime = np.zeros_like(beta_E_0)
-            beta_I_prime = np.zeros_like(beta_I_0)
-        
 
-         
+
         if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = (sigma_noise_e * np.array([gauss(0.0, 1.0) for k in range(len(beta_E_0))])).astype('float64')
-            Noise_I = (sigma_noise_i * np.array([gauss(0.0, 1.0) for k in range(len(beta_I_0))])).astype('float64')
+            Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(beta_E_0))
+            Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(beta_I_0))
         else:
             Noise_E = 0
             Noise_I = 0
                
-        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+ass*prop_EE)*beta_E_0 +ass*prop_EE_prime*beta_E_prime - ass*prop_IE*beta_I_0 - ass*prop_IE_prime*beta_I_prime) + Noise_E*np.sqrt(Delta_t)/tau_e
-        beta_I_Delta_t = beta_I_0 + time_I*(bss*prop_EI*beta_E_0 + bss*prop_EI_prime*beta_E_prime - (d_i+bss*prop_II)*beta_I_0 - bss*prop_II_prime*beta_I_prime) + Noise_I*np.sqrt(Delta_t)/tau_i
+        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+ass*prop_EE)*beta_E_0 - ass*prop_IE*beta_I_0) + Noise_E*np.sqrt(Delta_t)/tau_e
+        beta_I_Delta_t = beta_I_0 + time_I*(bss*prop_EI*beta_E_0 - (d_i+bss*prop_II)*beta_I_0) + Noise_I*np.sqrt(Delta_t)/tau_i
 
 
-        #beta_E_prime = (beta_E_Delta_t-beta_E_0)/Delta_t
-        #beta_I_prime = (beta_I_Delta_t-beta_I_0)/Delta_t
          
         if i>=1000:
             beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t).astype('float32')
             
             
-        if i%30 == 0:
+        if i%100 == 0:
             print(i)
             print(np.abs(beta_E_0).max())   
             print(np.abs(beta_I_0).max())
             if Visual==True:
             
                 ax.clear()
+                ax.set_ylim(-1e1*sigma_noise_e, 1e1*sigma_noise_e)
     
                 ax.plot(np.dot(U,beta_I_Delta_t), 'b-')
                 ax.plot(np.dot(U,beta_E_Delta_t), 'r-')

@@ -161,9 +161,9 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
     # x0[:,4] = np.random.rand(2)
 
     x0 = np.random.rand(2,initial_guesses)
+    results = []
     
     success = False
-    results = np.zeros((2,initial_guesses))
     
     def f(x, alpha_EE, alpha_IE, alpha_EI, alpha_II, d_e, d_i, P, Q):       
         d = np.array([[d_e,0],[0,d_i]], dtype=float)
@@ -174,25 +174,28 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
         return SS_EQ
     
     for i in range(initial_guesses):
-        steady_state = sp.optimize.fsolve(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i,P,Q),
-                                          xtol=1e-8, 
-                                          full_output=True) 
+        steady_state_res = sp.optimize.root(f,x0[:,i],args=(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i,P,Q),
+                                          method='lm',
+                                          options={'ftol':1e-12})
+        #print(steady_state_res['x'])
+        #print(steady_state_res['fun'][0]-steady_state_res['fun'][1])
+        fun = steady_state_res['fun'][0]-steady_state_res['fun'][1]
+        steady_state = steady_state_res['x'] 
         
-     #important line: conditions for success of SS calculation
-        if steady_state[0][0]>=0 and steady_state[0][1]>=0 and steady_state[0][0]<=1 and steady_state[0][0]<=1: # and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-20:
-            results[0,i]=steady_state[0][0]
-            results[1,i]=steady_state[0][1]
+
+        if np.all(steady_state>0) and np.all(steady_state<1) and np.abs(fun) <1e-9: # and np.linalg.norm(steady_state[1]['fvec'],ord=1)<=1e-20:
+            results.append(steady_state)
             success=True
-        else:
-            results[0,i]= np.nan
-            results[1,i]= np.nan
+
     
     #select and importantly sort the unique, acceptable results
     if success==True:
+        results = np.array(results)
+        #print(np.unique(results.round(5), axis=0, return_index=True))
+        #results = results[:,~np.all(np.isnan(results), axis=0)]    
 
-        results = results[:,~np.all(np.isnan(results), axis=0)]    
-
-        finals = results[:,np.unique(results.round(7), axis=1, return_index=True)[1]]
+        finals = results[np.unique(results.round(5), axis=0, return_index=True)[1]]
+        #print(finals)
         
         #Further routine to select unique steady states up to some user-specified numerical tolerance   
         # tolerance=0.001
@@ -218,7 +221,7 @@ def H_Simple_Steady_State(alpha_EE=1, alpha_IE=1, alpha_EI=1, alpha_II=1, d_e=1,
         
     #    #print(str(len(finals[0]))+" unique steady states were found")        
        
-        return finals, success
+        return finals.T, success
     else:
   #      #print("No positive, exact solutions were found")
         return None, success
@@ -266,15 +269,6 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
     # K_IE += GraphKernel(eigs,t_IE,type=Graph_Kernel,a=aDW_IE,b=bDW_IE,prime=True)[1]
     # K_EI += GraphKernel(eigs,t_EI,type=Graph_Kernel,a=aDW_EI,b=bDW_EI,prime=True)[1]
     # K_II += GraphKernel(eigs,t_II,type=Graph_Kernel,a=aDW_II,b=bDW_II,prime=True)[1]  
-    
-    #normal calculation, works for diffusion, doesnt seem to work for DW
-    # Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*ass*K_EE/tau_e - alpha_II*bss*K_II/tau_i  
-    # Determinant = -alpha_EE*alpha_II*ass*bss*K_EE*K_II/(tau_e*tau_i) - alpha_EE*ass*d_i*K_EE/(tau_e*tau_i) + alpha_II*bss*d_e*K_II/(tau_e*tau_i) + alpha_IE*alpha_EI*ass*bss*K_EI*K_IE + d_e*d_i/(tau_e*tau_i)
-
-    # Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
-    # Jacobian_eigenvalues[:,1]= (Trace - sp.sqrt(Trace**2 - 4*Determinant))/2.0   
-
-    
 
     #print(Full_jacobian.shape)
 
@@ -282,6 +276,12 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
         Full_jacobian = np.array([[-d_e/tau_e + alpha_EE*ass*K_EE/tau_e, -alpha_IE*ass*K_IE/tau_e],[alpha_EI*bss*K_EI/tau_i,-d_i/tau_i -alpha_II*bss*K_II/tau_i]]).T
 
         Jacobian_eigenvalues =np.linalg.eigvals(Full_jacobian)
+        #normal calculation, works for diffusion, doesnt seem to work for DW
+        # Trace = -(d_e/tau_e+d_i/tau_i) + alpha_EE*ass*K_EE/tau_e - alpha_II*bss*K_II/tau_i  
+        # Determinant = -alpha_EE*alpha_II*ass*bss*K_EE*K_II/(tau_e*tau_i) - alpha_EE*ass*d_i*K_EE/(tau_e*tau_i) + alpha_II*bss*d_e*K_II/(tau_e*tau_i) + alpha_IE*alpha_EI*ass*bss*K_EI*K_IE + d_e*d_i/(tau_e*tau_i)
+
+        # Jacobian_eigenvalues[:,0]= (Trace + sp.sqrt(Trace**2 - 4*Determinant))/2.0
+        # Jacobian_eigenvalues[:,1]= (Trace - sp.sqrt(Trace**2 - 4*Determinant))/2.0   
     else:
         SStype=0
         suitable = False
