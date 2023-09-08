@@ -66,7 +66,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(u_0))
-        ax.set_ylim(0, 0.1)
+        ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
         
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')        
@@ -109,7 +109,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
-            ax.set_ylim(0,0.1)
+            ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -230,6 +230,8 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     if one_dim==True:    
         E_0=Ess*np.ones(gridsize, dtype='float64')
         I_0=Iss*np.ones(gridsize, dtype='float64')
+        #E_0[245] = Ess+1e-5#*np.arange(75)
+        #I_0[555:600] = Iss+1e-3
     else:
         E_0=Ess*np.ones(len(eigvals), dtype='float64')
         I_0=Iss*np.ones(len(eigvals), dtype='float64')
@@ -245,7 +247,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     if Visual==True:
         plt.ion()
-        fig = plt.figure()
+        fig = plt.figure(figsize=(12,6))
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(E_0))
         #ax.set_ylim(0, 1)
@@ -275,6 +277,12 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                             alpha_EE, alpha_IE, alpha_EI, alpha_II,
                            propagator_EE, propagator_IE, propagator_EI, propagator_II,
                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
+        
+        #if i%10 == 0:
+        #if i<1000:
+        #    E_Delta_t[i]+=1e-4
+        #I_Delta_t[700:800]-=1e-7
+            #I_Delta_t[500:600]-=1e-7
    
          
         if i>=1000:
@@ -289,12 +297,16 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             print(np.abs(E_Delta_t-Ess).max())
             print(np.abs(I_Delta_t-Iss).max())
             if Visual==True:
+                #time.sleep(0.03)
                 ax.clear()
-                ax.set_ylim(Ess-1e1*sigma_noise_e, Ess+1e1*sigma_noise_e)
+                if sigma_noise_e>0:
+                    ax.set_ylim(-10*sigma_noise_e, 10*sigma_noise_e)
+                else:
+                    ax.set_ylim(-1e-5, 1e-5)
                 #line2.set_ydata(I_Delta_t)
                 #line1.set_ydata(E_Delta_t)
-                ax.plot(I_Delta_t, 'b-')
-                ax.plot(E_Delta_t, 'r-')
+                ax.plot(I_Delta_t-Iss, 'b-')
+                ax.plot(E_Delta_t-Ess, 'r-')
                 fig.canvas.draw()
                 fig.canvas.flush_events()
            
@@ -342,7 +354,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
-                          Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
+                          Visual=False, SaveActivity=False, Filepath=' ', NSim=0, beta_E_0=None, beta_I_0=None):
 
 
 
@@ -365,8 +377,15 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         U=eigvecs
     
     #fluctuations about the steady state
-    beta_E_0 = np.zeros(len(s), dtype='float64')
-    beta_I_0 = np.zeros(len(s), dtype='float64')
+    if beta_E_0 is None:
+        beta_E_0 = np.zeros(len(s), dtype='float64')       
+    else:
+        beta_E_0 = beta_E_0
+
+    if beta_I_0 is None:
+        beta_I_0 = np.zeros(len(s), dtype='float64')       
+    else:
+        beta_I_0 = beta_I_0       
      
     if Graph_Kernel == 'Damped Wave':
         prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE)
@@ -614,7 +633,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                 fig3 = plt.figure(figsize=(8,8))
                 ax = fig3.add_subplot(111)
                 ax.set_title("FC Matrix (Prediction)", pad=15)
-                plot_pred_FC = ax.imshow(predicted_FC, cmap='inferno')
+                plot_pred_FC = ax.imshow(predicted_FC, cmap='inferno',vmin=0,vmax=0.2)
                 fig3.colorbar(plot_pred_FC)
 
                 if Save_Results==True:    
@@ -623,7 +642,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             fig4 = plt.figure(figsize=(8,8))
             ax2 = fig4.add_subplot(111)
             ax2.set_title("FC Matrix (Simulation)", pad=15)
-            plot_actual_FC = ax2.imshow(FC, cmap='inferno')
+            plot_actual_FC = ax2.imshow(FC, cmap='inferno',vmin=0,vmax=0.2)
             fig4.colorbar(plot_actual_FC)
             
             if Save_Results==True:    
