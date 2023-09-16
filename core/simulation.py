@@ -16,6 +16,8 @@ from scipy import stats
 import os
 from .analysis import *
 opj = os.path.join
+from datetime import datetime
+
 #written for python 3.6 
 ####################################################################################################
 ####################################################################################################    
@@ -209,7 +211,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
-                          Visual=False, SaveActivity=False, Filepath=' ', NSim=0):
+                          Visual=False, SaveActivity=False, Filepath=''):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -241,13 +243,23 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     I_Delta_t = np.zeros_like(I_0)
     
     Timesteps = int(round(Time/Delta_t))
+
+    checkpoint_timesteps = 1000
     
+    checkpoints = 1+ int(Timesteps//checkpoint_timesteps)
+
+    if Timesteps%checkpoint_timesteps != 0:
+        last_one = Timesteps%checkpoint_timesteps
+    else:
+        checkpoints -= 1
+        last_one = checkpoint_timesteps
     
-    E_total = np.zeros((len(E_0),Timesteps-1000), dtype='float32')
+    print(checkpoints)
+      
     
     if Visual==True:
         plt.ion()
-        fig = plt.figure(figsize=(12,6))
+        fig = plt.figure(figsize=(10,6))
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(E_0))
         #ax.set_ylim(0, 1)
@@ -263,77 +275,76 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     if numerical_SS == True:
         Ess_numerical=[]
         Iss_numerical=[]
-    
-    for i in range(Timesteps):
-        if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(E_0))
-            Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(I_0))
-        else:
-            Noise_E = 0
-            Noise_I = 0
 
-               
-        E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0,  Delta_t,
-                            alpha_EE, alpha_IE, alpha_EI, alpha_II,
-                           propagator_EE, propagator_IE, propagator_EI, propagator_II,
-                           d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
-        
-        #if i%10 == 0:
-        #if i<1000:
-        #    E_Delta_t[i]+=1e-4
-        #I_Delta_t[700:800]-=1e-7
-            #I_Delta_t[500:600]-=1e-7
-   
-         
-        if i>=1000:
-            E_total[:,i-1000]=np.copy(E_Delta_t).astype('float32')
+    for check in range(checkpoints):
+        if check < (checkpoints-1):
+            E_total = np.zeros((len(E_0),checkpoint_timesteps), dtype='float32')
+            I_total = np.zeros((len(E_0),checkpoint_timesteps), dtype='float32')
+
+            ts_check = checkpoint_timesteps
+        else:
+            print('last one')
+            E_total = np.zeros((len(E_0),last_one), dtype='float32')
+            I_total = np.zeros((len(E_0),last_one), dtype='float32')
+
+            ts_check = last_one
+
+        for i in range(ts_check):
+            if sigma_noise_e!=0 or sigma_noise_i!=0:
+                Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(E_0))
+                Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(I_0))
+            else:
+                Noise_E = 0
+                Noise_I = 0
+            
+            E_Delta_t, I_Delta_t = GWCM_Loop(E_0, I_0,  Delta_t,
+                                alpha_EE, alpha_IE, alpha_EI, alpha_II,
+                            propagator_EE, propagator_IE, propagator_EI, propagator_II,
+                            d_e, d_i, P, Q, tau_e, tau_i, Noise_E, Noise_I)
+            
+            # if i%100 == 0:
+            # #if i<1000:
+            #    E_Delta_t[400:420]+=1e-3 * np.exp(-np.arange(20)**2/(2*3**2))
+            # I_Delta_t[700:800]-=1e-7
+            #     I_Delta_t[500:600]-=1e-7
+    
+    
+            E_total[:,i]=np.copy(E_Delta_t).astype('float32')
+            I_total[:,i]=np.copy(I_Delta_t).astype('float32')
+
             if numerical_SS == True:
                 Ess_numerical.append(np.mean(E_Delta_t))
                 Iss_numerical.append(np.mean(I_Delta_t))
+                
+
+            if i%1000 == 0:
+                print(i)
+                print(np.abs(E_Delta_t-Ess).max())
+                print(np.abs(I_Delta_t-Iss).max())
+                if Visual==True:
+                    time.sleep(0.02)
+                    ax.clear()
+                    if sigma_noise_e>0:
+                        ax.set_ylim(-20*sigma_noise_e, 20*sigma_noise_e)
+                    else:
+                        ax.set_ylim(-1e-7, 1e-7)
+                    #ax.set_xlim(310,495)
+                    #line2.set_ydata(I_Delta_t)
+                    #line1.set_ydata(E_Delta_t)
+                    ax.plot(I_Delta_t-Iss, 'b-', lw=4)
+                    ax.plot(E_Delta_t-Ess, 'r-', lw=4)
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
             
+            E_0 = np.copy(E_Delta_t)   
+            I_0 = np.copy(I_Delta_t)
+            #print(E_0.shape)
+            #print(str(E_0[10])+" "+str(I_0[20]))
+        if SaveActivity:
+            simtime = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+            np.save(os.path.join(Filepath,f'E_activity_{check}_{simtime}.npy'),E_total)
+            np.save(os.path.join(Filepath,f'I_activity_{check}_{simtime}.npy'),I_total)
 
-        if i%30 == 0:
-            print(i)
-            print(np.abs(E_Delta_t-Ess).max())
-            print(np.abs(I_Delta_t-Iss).max())
-            if Visual==True:
-                #time.sleep(0.03)
-                ax.clear()
-                if sigma_noise_e>0:
-                    ax.set_ylim(-10*sigma_noise_e, 10*sigma_noise_e)
-                else:
-                    ax.set_ylim(-1e-5, 1e-5)
-                #line2.set_ydata(I_Delta_t)
-                #line1.set_ydata(E_Delta_t)
-                ax.plot(I_Delta_t-Iss, 'b-')
-                ax.plot(E_Delta_t-Ess, 'r-')
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-           
-        E_0 = np.copy(E_Delta_t)   
-        I_0 = np.copy(I_Delta_t)
-        #print(E_0.shape)
-        #print(str(E_0[10])+" "+str(I_0[20]))
-
-    if SaveActivity==True:
-                    
-        if Filepath==' ':
-            filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-            filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
-        else:
-            filepath=Filepath
-                        
-        if not os.path.exists(filepath):
-            os.makedirs(filepath)
-        
-        #make DAT files with sim-only parameters (delta t, time, etc)
-        with h5py.File(filepath+"Activity E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
-            if "Activity" not in list(hf.keys()):
-                hf.create_dataset("Activity",  data=E_total)
-            else:
-                print("Warning: overwriting results of a previous simulation.")
-                del hf["Activity"]
-                hf.create_dataset("Activity",  data=E_total) 
                 
     if numerical_SS==True:
         print(np.mean(np.array(Ess_numerical)))
