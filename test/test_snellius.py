@@ -4,11 +4,9 @@ mkl.set_num_threads(191)
 import numpy as np
 import scipy as sp 
 
-
 from scipy import stats, io, sparse
 import os
 import sys
-import h5py
 
 module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
@@ -17,10 +15,10 @@ if module_path not in sys.path:
 from core.analysis import *
 from core.simulation import *
 
-eigenvalues = np.load('/home/aqil/NFModel/eigvals_DTI_fgCCfix_subcortex_dti50.npy')
-eigenvectors = np.load('/home/aqil/NFModel/eigvecs_DTI_fgCCfix_subcortex_dti50.npy')
+eigenvalues = np.load('/projects/0/vuse0612/SM-pRF/NFm/eigvals_DTI_fgCCfix_subcortex_dti50.npy')
+eigenvectors = np.load('/projects/0/vuse0612/SM-pRF/NFm/eigvecs_DTI_fgCCfix_subcortex_dti50.npy')
 
-better_result=dict(x=np.load('de_fitting_23_subc_dti50.npy'))
+better_result=dict(x=np.load('/projects/0/vuse0612/SM-pRF/NFm/de_fitting_23_subc_dti50.npy'))
 
 Graph_Kernel='Damped Wave'
 
@@ -68,4 +66,4 @@ E_total = Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                                                      
                         snE, snI, Graph_Kernel,                                  
                          one_dim=False, eigvals=eigenvalues, eigvecs=eigenvectors,
-                         Visual=False, SaveActivity=True, Filepath='')  
+                         Visual=False, SaveActivity=True, Filepath='', checkpoint_timesteps=100000)  

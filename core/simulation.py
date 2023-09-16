@@ -211,7 +211,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
-                          Visual=False, SaveActivity=False, Filepath=''):
+                          Visual=False, SaveActivity=False, Filepath='', checkpoint_timesteps=100000):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -243,8 +243,6 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     I_Delta_t = np.zeros_like(I_0)
     
     Timesteps = int(round(Time/Delta_t))
-
-    checkpoint_timesteps = 1000
     
     checkpoints = 1+ int(Timesteps//checkpoint_timesteps)
 
