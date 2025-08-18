@@ -1,12 +1,14 @@
 import mkl
-mkl.set_num_threads(191)
+mkl.set_num_threads(35)
 
 import numpy as np
 import scipy as sp 
 
+
 from scipy import stats, io, sparse
 import os
 import sys
+import h5py
 
 module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
@@ -15,10 +17,12 @@ if module_path not in sys.path:
 from core.analysis import *
 from core.simulation import *
 
-eigenvalues = np.load('/projects/0/vuse0612/SM-pRF/NFm/eigvals_DTI_fgCCfix_subcortex_dti50.npy')
-eigenvectors = np.load('/projects/0/vuse0612/SM-pRF/NFm/eigvecs_DTI_fgCCfix_subcortex_dti50.npy')
+eigenvalues = np.load('/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/eigvals_DTI_fgCCfix_subcortex_dti50.npy')
+eigenvectors = np.load('/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/eigvecs_DTI_fgCCfix_subcortex_dti50.npy')
 
-better_result=dict(x=np.load('/projects/0/vuse0612/SM-pRF/NFm/de_fitting_23_subc_dti50.npy'))
+#better_result=dict(x=np.load('/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/de_fitting_23_subc_dti50.npy'))
+
+better_result=dict(x=np.load('/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/de_fitting_hcpmeg_subc_dti50_4.npy'))
 
 Graph_Kernel='Damped Wave'
 
@@ -50,20 +54,37 @@ snE=0.0000001
 #snE=0.0001
 snI=snE
 
-Ess = 0.00493218
-Iss = 0.07516145
+Ess = 0.00532051#0.00493218
+Iss = 0.08362476#0.07516145
 
-Time=60*10
-Delta_t=0.0001
+Time = 10 *60
+Delta_t = 0.00005 #0.00005
+Filepath = '/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/10min_beta_sim_hcpmeg_20khz_fftfilterdown500hz'
 
-E_total = Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,                          
-                         aEE, aIE, aEI, aII,
-                         sEE, sIE, sEI, sII, D,
-                         dE, dI, P, Q, tE, tI, 
+# E_total = Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,                          
+#                          aEE, aIE, aEI, aII,
+#                          sEE, sIE, sEI, sII, D,
+#                          dE, dI, P, Q, tE, tI, 
                                                                   
-                                    aDWEE,aDWIE, aDWEI, aDWII,
-                                    bDWEE, bDWIE, bDWEI, bDWII,  
+#                                     aDWEE,aDWIE, aDWEI, aDWII,
+#                                     bDWEE, bDWIE, bDWEI, bDWII,  
                                                      
-                        snE, snI, Graph_Kernel,                                  
-                         one_dim=False, eigvals=eigenvalues, eigvecs=eigenvectors,
-                         Visual=False, SaveActivity=True, Filepath='', checkpoint_timesteps=100000)  
+#                         snE, snI, Graph_Kernel,                                  
+#                          one_dim=False, eigvals=eigenvalues, eigvecs=eigenvectors,
+#                          Visual=False, SaveActivity=True, Filepath=Filepath, checkpoint_timesteps=100000,
+#                           downsampling_factor=40, decimate=False)
+
+Beta_E_total = Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,                          
+                     aEE, aIE, aEI, aII,
+                     sEE, sIE, sEI, sII, D,
+                     dE, dI, P, Q, tE, tI, 
+                                aDWEE,aDWIE, aDWEI, aDWII,
+                                bDWEE, bDWIE, bDWEI, bDWII,                                                            
+                    snE, snI, 
+                   # 0,0,
+                        Graph_Kernel,
+                     one_dim=False, eigvals=eigenvalues, eigvecs=None,
+                     Visual=False, SaveActivity=True, Filepath=Filepath, checkpoint_timesteps=100000,
+                     downsampling_factor=40, decimate=False)
+                                                      
+                                                      #,beta_E_0=u_1) 

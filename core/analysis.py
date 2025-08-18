@@ -4,12 +4,15 @@ from scipy import special
 import similaritymeasures as sm
 import matplotlib.pyplot as plt
 import matplotlib.colors as pltcolors
-from mpl_toolkits.mplot3d import Axes3D
+#from mpl_toolkits.mplot3d import Axes3D
 import h5py
 import os
 from scipy import sparse
-plt.rcParams.update({'font.size': 20})
-plt.tight_layout()
+plt.rcParams.update({'font.size': 22})
+plt.rcParams.update({'pdf.fonttype':42})
+plt.rcParams.update({'figure.max_open_warning': 0})
+plt.rcParams['axes.spines.right'] = False
+plt.rcParams['axes.spines.top'] = False
 ####################################################################################################
 ####################################################################################################
 #written for python 3.6 
@@ -81,9 +84,9 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
         #AdjMatrix[499,500]=0
         #AdjMatrix[500,499]=0
         
-        speed_factor=50
-        indices1=np.arange(250,250+syn)#(gridsize*np.random.rand(syn)).astype(int)#
-        indices2=np.arange(750,750+syn)#(gridsize*np.random.rand(syn)).astype(int)#
+        speed_factor=300
+        indices1=np.arange(20,20+syn)#(gridsize*np.random.rand(syn)).astype(int)#
+        indices2=np.arange(50,50+syn)#(gridsize*np.random.rand(syn)).astype(int)#
         
         #all-to-all or one-by-one connections
         alltoall=False
@@ -104,9 +107,9 @@ def one_dim_Laplacian_eigenvalues(gridsize, h, syn=0, vecs=False):
                 AdjMatrix[indices2[count],k1]=(speed_factor/dist)**2    
                 
                 #cross 
-                dist_2=h*np.abs(k1-indices2[-count])                         
-                AdjMatrix[k1,indices2[-count]]=(speed_factor/dist_2)**2
-                AdjMatrix[indices2[-count],k1]=(speed_factor/dist_2)**2   
+                # dist_2=h*np.abs(k1-indices2[-count])                         
+                # AdjMatrix[k1,indices2[-count]]=(speed_factor/dist_2)**2
+                # AdjMatrix[indices2[-count],k1]=(speed_factor/dist_2)**2   
                 
     
     #PLOT ADJ MATRIX
@@ -292,7 +295,7 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
         
         if Visual==True:
             plt.ion()
-            fig = plt.figure()
+            fig = plt.figure(figsize=(9,8))
             plt.title("Jacobian Eigenspectrum")
             plt.xlabel("Re[x]")
             plt.ylabel("Im[x]")
@@ -300,7 +303,9 @@ def GraphWC_Jacobian_TrDet(Laplacian_eigenvalues, Graph_Kernel='Gaussian', Ess=N
             #ax = fig.add_subplot(111)
             #ax.set_xlim(-0.1, 20000)
             #ax.set_ylim(0, 20)
+            plt.xlim(-120,3)
             plt.scatter(np.ravel(Jacobian_eigenvalues).real,np.ravel(Jacobian_eigenvalues).imag, marker='o', s=2, c=color, cmap='nipy_spectral')#, edgecolor='black', linewidth=0.1)
+            plt.savefig(f"/data1/projects/dumoulinlab/Lab_members/Marco/NFsim/Figures/jac_eigen.pdf", dpi=600, transparent=True) 
         
         jacob_eig_max = -0.01
         if np.any(Jacobian_eigenvalues.real>=jacob_eig_max) or np.any(~np.isfinite(Jacobian_eigenvalues)):
@@ -358,7 +363,7 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
                        tau_e=1, tau_i=1,
                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
-                       sigma_noise_e=1, sigma_noise_i=1, min_omega=0, max_omega=100, delta_omega=0.1,
+                       sigma_noise_e=1, sigma_noise_i=1, min_omega=0, max_omega=100, delta_omega=0.1, omegas=None,
                        Spatial_Spectrum_Only=True, Visual=False):
     
     t_EE = (0.5*sigma_EE**2)/D
@@ -390,10 +395,10 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
         
         Gmatrix2 = np.zeros((len(eigs),2,2), dtype=float)
   
-        
+        #analytic excitatory sps
         Gmatrix2[:,0,0] = 0.5*((sigma_noise_e**2)/(tau_i*d_e-tau_i*ass*alpha_EE*K_EE+d_i*tau_e+bss*tau_e*alpha_II*K_II))*((tau_i/tau_e) + ((ass**2)*((alpha_IE*K_IE)**2)+ (d_i + bss*alpha_II*K_II)**2)/(d_e*d_i+ (d_e*bss*alpha_II*K_II) - (ass*d_i*alpha_EE*K_EE) - ass*bss*(alpha_EE*K_EE*alpha_II*K_II-alpha_EI*K_EI*alpha_IE*K_IE)))
         
-        #i cannot currently be bothered to write this down in terms of the parameters explicitly
+        #i cannot currently be bothered to write this down in terms of the parameters explicitly (this is the analytic inhibitory sps)
         Gmatrix2[:,1,1] = 0.5*(Dmatrix[1,1] + (Dmatrix[0,0]*A[:,1,0]**2+Dmatrix[1,1]*A[:,0,0]**2) / (A[:,0,0]*A[:,1,1]-A[:,0,1]*A[:,1,0]))/(A[:,0,0]+A[:,1,1])
         
         if Visual==True:
@@ -409,7 +414,8 @@ def Graph_WC_Spatiotemporal_PowerSpectrum(Laplacian_eigenvalues, Graph_Kernel='G
             
         return np.abs(Gmatrix2)                 
     else:
-        omegas=np.arange(min_omega ,max_omega,delta_omega)
+        if omegas is None:
+            omegas=np.arange(min_omega ,max_omega, delta_omega)
 
         E_Full_Spectrum=np.zeros((len(eigs),len(omegas)), dtype=float)
         I_Full_Spectrum=np.zeros((len(eigs),len(omegas)), dtype=float)
@@ -544,7 +550,7 @@ def find_scaling(x, e_s, i_s, t_s):
 #Loop for all semi-analytic calculations given parameter set and eigenvalues: HSS, LSA, PSD
 ####################################################################################################    
 
-def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal_Spectrum=None, min_omega=0, max_omega=300, delta_omega=0.5,
+def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal_Spectrum=None, min_omega=0, max_omega=300, delta_omega=0.5, omegas=None,
                   True_Spatial_Spectrum=None, first_k=2, last_k=None, bins=None, LSA=True, Visual=False, SaveFiles=False, Filepath=' ',
                   best_minDist = 800, disp_print=False):
    
@@ -723,7 +729,7 @@ def Full_Analysis(Parameters, Laplacian_eigenvalues, Graph_Kernel, True_Temporal
                                                     aDW_EE, aDW_IE, aDW_EI, aDW_II,
                                                     bDW_EE, bDW_IE, bDW_EI, bDW_II, 
                                                     sigma_noise_e=1, sigma_noise_i=1,
-                                                    min_omega=min_omega, max_omega=max_omega, delta_omega=delta_omega,
+                                                    min_omega=min_omega, max_omega=max_omega, delta_omega=delta_omega, omegas=omegas,
                                                     Spatial_Spectrum_Only=False, Visual=False)
                         
                         E_temporal_spectrum[ss,:] = 2*np.sum(E_Spectrum,axis=1)
@@ -1189,3 +1195,7 @@ def construct_adjacency_matrix_from_data(filepath_data,
         return mesh_adjacency, Xn, Yn, Zn, iN, jN, kN,  Xe, Ye, Ze 
     else:
         return mesh_adjacency
+    
+
+
+

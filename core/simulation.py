@@ -1,9 +1,11 @@
 import numpy as np
 import scipy as sp
 from scipy import sparse
-from mpl_toolkits.mplot3d import Axes3D
+#from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from scipy import signal
+from scipy.ndimage import gaussian_filter1d
+
 
 #import hdf5storage
 import h5py
@@ -68,7 +70,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
         fig = plt.figure()
         ax = fig.add_subplot(111)
         ax.set_xlim(0, len(u_0))
-        ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
+        #ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
         
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')        
@@ -111,7 +113,7 @@ def graph_propagator_test(u_0, Time, Delta_t, kernel_param, Graph_Kernel, a=1, b
             time.sleep(0.03)
             ax.clear()
             ax.set_xlim(0, len(u_0))
-            ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
+            #ax.set_ylim(0.9*u_0.mean(), 1.1*u_0.mean())
             #line2.set_ydata(I_Delta_t)
             #line1.set_ydata(E_Delta_t)
             ax.plot(u_Delta_t, 'b-')           
@@ -211,7 +213,9 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
-                          Visual=False, SaveActivity=False, Filepath='', checkpoint_timesteps=100000):
+                          E_0=None,I_0=None,
+                          Visual=False, SaveActivity=False, Filepath='', checkpoint_timesteps=100000,
+                          downsampling_factor=1, decimate=False):
     
     t_EE = (0.5*sigma_EE**2)/D
     t_IE = (0.5*sigma_IE**2)/D
@@ -228,15 +232,19 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     
     
 
-        
-    if one_dim==True:    
-        E_0=Ess*np.ones(gridsize, dtype='float64')
-        I_0=Iss*np.ones(gridsize, dtype='float64')
+         
+    if one_dim==True:
+        if E_0 is None:    
+            E_0=Ess*np.ones(gridsize, dtype='float64')
+        if I_0 is None:
+            I_0=Iss*np.ones(gridsize, dtype='float64')
         #E_0[245] = Ess+1e-5#*np.arange(75)
         #I_0[555:600] = Iss+1e-3
     else:
-        E_0=Ess*np.ones(len(eigvals), dtype='float64')
-        I_0=Iss*np.ones(len(eigvals), dtype='float64')
+        if E_0 is None: 
+            E_0=Ess*np.ones(len(eigvals), dtype='float64')
+        if I_0 is None:
+            I_0=Iss*np.ones(len(eigvals), dtype='float64')
         
     
     E_Delta_t = np.zeros_like(E_0)
@@ -259,14 +267,14 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         plt.ion()
         fig = plt.figure(figsize=(10,6))
         ax = fig.add_subplot(111)
-        ax.set_xlim(0, len(E_0))
+        #ax.set_xlim(0, len(E_0))
         #ax.set_ylim(0, 1)
         #line2, = ax.plot(np.arange(len(I_0)), I_0, 'b-')
         #line1, = ax.plot(np.arange(len(E_0)), E_0, 'r-')
         
-        ax.plot(I_0, 'b-')
-        ax.plot(E_0, 'r-')
-        fig.canvas.draw()
+        # ax.plot(I_0, 'b-')
+        # ax.plot(E_0, 'r-')
+        # fig.canvas.draw()
     
     numerical_SS = True
     
@@ -315,7 +323,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                 Iss_numerical.append(np.mean(I_Delta_t))
                 
 
-            if i%1000 == 0:
+            if i%10 == 0:
                 print(i)
                 print(np.abs(E_Delta_t-Ess).max())
                 print(np.abs(I_Delta_t-Iss).max())
@@ -326,7 +334,7 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                         ax.set_ylim(-20*sigma_noise_e, 20*sigma_noise_e)
                     else:
                         ax.set_ylim(-1e-7, 1e-7)
-                    #ax.set_xlim(310,495)
+                    ax.set_xlim(0,100)
                     #line2.set_ydata(I_Delta_t)
                     #line1.set_ydata(E_Delta_t)
                     ax.plot(I_Delta_t-Iss, 'b-', lw=4)
@@ -338,10 +346,17 @@ def Graph_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             I_0 = np.copy(I_Delta_t)
             #print(E_0.shape)
             #print(str(E_0[10])+" "+str(I_0[20]))
-        if SaveActivity:
+        if SaveActivity:  
             simtime = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-            np.save(os.path.join(Filepath,f'E_activity_{check}_{simtime}.npy'),E_total)
-            np.save(os.path.join(Filepath,f'I_activity_{check}_{simtime}.npy'),I_total)
+            if decimate:
+
+                np.save(os.path.join(Filepath,f'E_activity_{check}_{simtime}.npy'), sp.signal.decimate(E_total, downsampling_factor))
+                np.save(os.path.join(Filepath,f'I_activity_{check}_{simtime}.npy'), sp.signal.decimate(I_total, downsampling_factor))                
+
+            else:
+
+                np.save(os.path.join(Filepath,f'E_activity_{check}_{simtime}.npy'),E_total[:,::downsampling_factor])
+                np.save(os.path.join(Filepath,f'I_activity_{check}_{simtime}.npy'),I_total[:,::downsampling_factor])
 
                 
     if numerical_SS==True:
@@ -363,7 +378,8 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
-                          Visual=False, SaveActivity=False, Filepath=' ', NSim=0, beta_E_0=None, beta_I_0=None):
+                          Visual=False, SaveActivity=False, Filepath='', checkpoint_timesteps=100000, beta_E_0=None, beta_I_0=None,
+                          downsampling_factor=1, decimate=False):
 
 
 
@@ -409,12 +425,20 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
     beta_I_Delta_t = np.zeros_like(beta_I_0)
     
     Timesteps = int(round(Time/Delta_t))    
+
+    checkpoints = 1+ int(Timesteps//checkpoint_timesteps)
+
+    if Timesteps%checkpoint_timesteps != 0:
+        last_one = Timesteps%checkpoint_timesteps
+    else:
+        checkpoints -= 1
+        last_one = checkpoint_timesteps
+    
+    print(checkpoints)
+
     time_E = Delta_t/tau_e 
     time_I = Delta_t/tau_i 
-    
-    beta_E_total = np.zeros((len(beta_E_0),Timesteps-1000), dtype='float32')  
-     
-    
+
     
     if Visual==True:
         plt.ion()
@@ -433,61 +457,124 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
        
     
     
-    for i in range(Timesteps):
+    for check in range(checkpoints):
+        if check < (checkpoints-1):
+            beta_E_total = np.zeros((len(beta_E_0),checkpoint_timesteps), dtype='float32')
+            beta_I_total = np.zeros((len(beta_E_0),checkpoint_timesteps), dtype='float32')
 
-
-        if sigma_noise_e!=0 or sigma_noise_i!=0:
-            Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(beta_E_0))
-            Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(beta_I_0))
+            ts_check = checkpoint_timesteps
         else:
-            Noise_E = 0
-            Noise_I = 0
-               
-        beta_E_Delta_t = beta_E_0 + time_E*((-d_e+ass*prop_EE)*beta_E_0 - ass*prop_IE*beta_I_0) + Noise_E*np.sqrt(Delta_t)/tau_e
-        beta_I_Delta_t = beta_I_0 + time_I*(bss*prop_EI*beta_E_0 - (d_i+bss*prop_II)*beta_I_0) + Noise_I*np.sqrt(Delta_t)/tau_i
+            print('last one')
+            beta_E_total = np.zeros((len(beta_E_0),last_one), dtype='float32')
+            beta_I_total = np.zeros((len(beta_E_0),last_one), dtype='float32')
+
+            ts_check = last_one
+
+        for i in range(ts_check):
 
 
-         
-        if i>=1000:
-            beta_E_total[:,i-1000]=np.copy(beta_E_Delta_t).astype('float32')
-            
-            
-        if i%100 == 0:
-            print(i)
-            print(np.abs(beta_E_0).max())   
-            print(np.abs(beta_I_0).max())
-            if Visual==True:
-            
-                ax.clear()
-                ax.set_ylim(-1e1*sigma_noise_e, 1e1*sigma_noise_e)
-    
-                ax.plot(np.dot(U,beta_I_Delta_t), 'b-')
-                ax.plot(np.dot(U,beta_E_Delta_t), 'r-')
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-            
-        beta_E_0 = np.copy(beta_E_Delta_t)   
-        beta_I_0 = np.copy(beta_I_Delta_t)    
-        
-    if SaveActivity==True:
-                    
-        if Filepath==' ':
-            filepath = 'G:/Macbook Stuff/Results/'+Graph_Kernel+' Kernel/aEE=%.3f aIE=%.3f aEI=%.3f aII=%.3f dE=%.3f dI=%.3f ' %(alpha_EE,alpha_IE,alpha_EI,alpha_II,d_e,d_i)
-            filepath += 'P=%.3f Q=%.3f sEE=%.3f sIE=%.3f sEI=%.3f sII=%.3f D=%.3f tE=%.3f tI=%.3f/'%(P,Q,sigma_EE,sigma_IE,sigma_EI,sigma_II,D,tau_e,tau_i) 
-        else:
-            filepath=Filepath
-            
-        if not os.path.exists(filepath):
-            os.makedirs(filepath)
-            
-            #make DAT files with sim-only parameters (delta t, time, etc)
-        with h5py.File(filepath+"Beta_Activity E0=%.5f Sim #%d.h5"%(Ess, NSim)) as hf:
-            if "Beta_Activity" not in list(hf.keys()):
-                hf.create_dataset("Beta_Activity",  data=beta_E_total)
+            if sigma_noise_e!=0 or sigma_noise_i!=0:
+                Noise_E = sigma_noise_e * np.random.default_rng().normal(0, 1, size=len(beta_E_0))
+                Noise_I = sigma_noise_i * np.random.default_rng().normal(0, 1, size=len(beta_I_0))
             else:
-                print("Warning: overwriting results of a previous simulation.")
-                del hf["Beta_Activity"]
-                hf.create_dataset("Beta_Activity",  data=beta_E_total)    
+                Noise_E = 0
+                Noise_I = 0
+                
+            beta_E_Delta_t = beta_E_0 + time_E*((-d_e+ass*prop_EE)*beta_E_0 - ass*prop_IE*beta_I_0) + Noise_E*np.sqrt(Delta_t)/tau_e
+            beta_I_Delta_t = beta_I_0 + time_I*(bss*prop_EI*beta_E_0 - (d_i+bss*prop_II)*beta_I_0) + Noise_I*np.sqrt(Delta_t)/tau_i
+
+
+            beta_E_total[:,i]=np.copy(beta_E_Delta_t).astype('float32')
+ 
+            beta_I_total[:,i]=np.copy(beta_I_Delta_t).astype('float32')               
+                
+            if i%1000 == 0:
+                print(i)
+                print(np.abs(beta_E_0).max())   
+                print(np.abs(beta_I_0).max())
+                if Visual==True:
+                
+                    ax.clear()
+                    ax.set_ylim(-1e1*sigma_noise_e, 1e1*sigma_noise_e)
+        
+                    ax.plot(np.dot(U,beta_I_Delta_t), 'b-')
+                    ax.plot(np.dot(U,beta_E_Delta_t), 'r-')
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
+                
+            beta_E_0 = np.copy(beta_E_Delta_t)   
+            beta_I_0 = np.copy(beta_I_Delta_t)    
+        
+        if SaveActivity:  
+            simtime = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+
+            if Filepath != '':
+                if not os.path.exists(Filepath):
+                    os.makedirs(Filepath)
+
+            if decimate:
+
+                np.save(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}.npy'), sp.signal.decimate(beta_E_total, downsampling_factor))
+                np.save(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}.npy'), sp.signal.decimate(beta_I_total, downsampling_factor))                
+
+            else:
+                # same problema as decimate                              
+                # np.save(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}.npy'), sp.signal.resample_poly(beta_E_total, up=1, down=downsampling_factor, axis=-1))
+                # np.save(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}.npy'), sp.signal.resample_poly(beta_I_total, up=1, down=downsampling_factor, axis=-1))   
+
+                # # Parameters
+                # original_sampling_rate = 1 / Delta_t  # Hz
+                # cutoff_freq = 100               # Hz
+                # sigma_time_seconds = 1 / (2 * np.pi * cutoff_freq)
+                # sigma_time_samples = sigma_time_seconds * original_sampling_rate
+
+                # # Apply Gaussian filter along time axis only # Downsample by taking every 40th point
+                # downsampled_E = gaussian_filter1d(beta_E_total, sigma=sigma_time_samples, axis=-1)[:,::downsampling_factor]
+                # downsampled_I = gaussian_filter1d(beta_I_total, sigma=sigma_time_samples, axis=-1)[:,::downsampling_factor]
+
+                if downsampling_factor > 1:
+                    spatial_modes, time_steps = beta_E_total.shape
+                    nyq_freq = 1 / (2 * downsampling_factor * Delta_t)
+                    cutoff_freq = 0.9 * nyq_freq
+
+                    # Time axis frequencies
+                    freqs = np.fft.rfftfreq(time_steps, d=Delta_t)
+
+                    # FFT along time axis
+                    E_fft = np.fft.rfft(beta_E_total, axis=-1)
+                    I_fft = np.fft.rfft(beta_I_total, axis=-1)
+
+                    # Construct smooth frequency mask
+                    # Hard cutoff:
+                    # mask = (freqs <= cutoff_frequency).astype(float)
+
+                    # Smooth cutoff (exponential roll-off)
+                    rolloff_width = (nyq_freq - cutoff_freq)/2  # Hz (adjust as needed for smoothness)
+                    mask = np.exp(-((freqs - cutoff_freq) / rolloff_width) ** 4)
+                    mask[freqs <= cutoff_freq] = 1.0  # Preserve low frequencies
+
+                    # Apply mask
+                    E_fft_filtered = E_fft * mask[np.newaxis,:]
+                    I_fft_filtered = I_fft * mask[np.newaxis,:]
+
+                    # Inverse FFT to time domain
+                    E_filtered_data = np.fft.irfft(E_fft_filtered, axis=-1)
+                    I_filtered_data = np.fft.irfft(I_fft_filtered, axis=-1)
+
+                    # Downsample: safe because high frequencies are removed
+                    downsampled_E = E_filtered_data[:,::downsampling_factor].astype(np.float32)
+                    downsampled_I = I_filtered_data[:,::downsampling_factor].astype(np.float32)
+
+                    np.savez_compressed(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}'),downsampled_E)
+                    np.savez_compressed(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}'),downsampled_I)
+                else:
+                    np.savez_compressed(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}'),beta_E_total)
+                    np.savez_compressed(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}'),beta_I_total)
+
+                
+
+                
+
 
     return beta_E_total
 
@@ -506,7 +593,8 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                       sigma_noise_e=1, sigma_noise_i=1,
                       Graph_Kernel='Gaussian', 
                       E_total=None, beta_E_total=None, compute_FC=False,
-                      prediction=False, min_omega=0, max_omega=100, delta_omega=0.1, temporal_downsampling=1,
+                      prediction=False, min_omega=0, max_omega=100, delta_omega=0.1, omegas=None,
+                      temporal_downsampling=1,
                       Spatial_scaling=[1,0], Temporal_scaling=[1,0],
                       one_dim=True, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None, Visual=True, Save_Results=False, Filepath=' ', NSim=0):
 
@@ -531,6 +619,9 @@ def Activity_Analysis(Ess, Iss, Delta_t,
             
     if one_dim==True:
         eigvals,eigvecs = one_dim_Laplacian_eigenvalues(gridsize, h, syn, vecs=True)
+
+    if omegas is None:
+        omegas = np.arange(min_omega,max_omega,delta_omega)
      
     
     #analyze fluctuations about the steady state
@@ -583,7 +674,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
 
                                                         aDW_EE, aDW_IE, aDW_EI, aDW_II,
                                                         bDW_EE, bDW_IE, bDW_EI, bDW_II,    
-                                                       sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega,
+                                                       sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega, omegas,
                                                        Spatial_Spectrum_Only=False, Visual=False)
          
          PS_prediction_spatial = Graph_WC_Spatiotemporal_PowerSpectrum(eigvals, Graph_Kernel, Ess, Iss,
@@ -632,7 +723,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         plt.xlim(0.5,100)
         
         if prediction:
-            line4, = plt.loglog(np.arange(min_omega,max_omega,delta_omega)/(2*np.pi),predicted_TPS, '--k', label='Prediction')
+            line4, = plt.loglog(omegas/(2*np.pi),predicted_TPS, '--k', label='Prediction')
         plt.legend()
         if Save_Results==True:    
             plt.savefig(figpath2, dpi=600, bbox_inches='tight')
