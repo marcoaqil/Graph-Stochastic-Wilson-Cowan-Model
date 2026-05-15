@@ -376,6 +376,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                           d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                       cDW_EE=0, cDW_IE=0, cDW_EI=0, cDW_II=0,
                           sigma_noise_e=1, sigma_noise_i=1,
                           Graph_Kernel='Gaussian', one_dim=False, syn=0, gridsize=1000, h=0.01, eigvals=None, eigvecs=None,
                           Visual=False, SaveActivity=False, Filepath='', checkpoint_timesteps=100000, beta_E_0=None, beta_I_0=None,
@@ -413,10 +414,10 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         beta_I_0 = beta_I_0       
      
     if Graph_Kernel == 'Damped Wave':
-        prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE)
-        prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE)
-        prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI)
-        prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II)
+        prop_EE = alpha_EE * GraphKernel(s, t_EE, Graph_Kernel,a=aDW_EE,b=bDW_EE,c=cDW_EE)
+        prop_IE = alpha_IE * GraphKernel(s, t_IE, Graph_Kernel,a=aDW_IE,b=bDW_IE,c=cDW_IE)
+        prop_EI = alpha_EI * GraphKernel(s, t_EI, Graph_Kernel,a=aDW_EI,b=bDW_EI,c=cDW_EI)
+        prop_II = alpha_II * GraphKernel(s, t_II, Graph_Kernel,a=aDW_II,b=bDW_II,c=cDW_II)
 
 
 
@@ -452,10 +453,20 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
         ax.plot(np.dot(U,beta_I_0), 'b-')
         ax.plot(np.dot(U,beta_E_0), 'r-')
         fig.canvas.draw()
-    
-    
-       
-    
+
+
+    stability_check = False
+
+    if 'stabilitycheck' in Filepath:
+        print('Stability check')
+        stability_check = True   
+        checkpoint_variation = 3
+        timepoint_variation = 0
+
+    # Overlap-save bookkeeping: each chunk is saved one iteration late,
+    # once the next chunk's head is available as right-side overlap.
+    overlap_samples_for_filtering = int(0.05 / Delta_t)  # 50 ms per side
+    pending_chunk_data = None
     
     for check in range(checkpoints):
         if check < (checkpoints-1):
@@ -471,6 +482,20 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             ts_check = last_one
 
         for i in range(ts_check):
+
+
+            if stability_check:
+                if check == checkpoint_variation and i == timepoint_variation:
+                    P *= (1.0005)
+                    SStates, success = H_Simple_Steady_State(alpha_EE, alpha_IE, alpha_EI, alpha_II, 
+                                            d_e, d_i, P, Q)
+                    ss = 0
+
+                    Ess = SStates[0,ss]
+                    Iss = SStates[1,ss]
+
+                    ass = d_e*Ess*(1-d_e*Ess)
+                    bss = d_i*Iss*(1-d_i*Iss)
 
 
             if sigma_noise_e!=0 or sigma_noise_i!=0:
@@ -489,7 +514,7 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
             beta_I_total[:,i]=np.copy(beta_I_Delta_t).astype('float32')               
                 
             if i%1000 == 0:
-                print(i)
+                print(f"{check} - {i}")
                 print(np.abs(beta_E_0).max())   
                 print(np.abs(beta_I_0).max())
                 if Visual==True:
@@ -533,47 +558,58 @@ def Linearized_GLDomain_Wilson_Cowan_Model(Ess, Iss, Time, Delta_t,
                 # downsampled_I = gaussian_filter1d(beta_I_total, sigma=sigma_time_samples, axis=-1)[:,::downsampling_factor]
 
                 if downsampling_factor > 1:
-                    spatial_modes, time_steps = beta_E_total.shape
-                    nyq_freq = 1 / (2 * downsampling_factor * Delta_t)
-                    cutoff_freq = 0.9 * nyq_freq
+                    spatial_modes = beta_E_total.shape[0]
 
-                    # Time axis frequencies
-                    freqs = np.fft.rfftfreq(time_steps, d=Delta_t)
+                    # Flush the pending (previous) chunk — now we have its right overlap
+                    if pending_chunk_data is not None:
+                        right_overlap_E = beta_E_total[:, :overlap_samples_for_filtering].copy()
+                        right_overlap_I = beta_I_total[:, :overlap_samples_for_filtering].copy()
 
-                    # FFT along time axis
-                    E_fft = np.fft.rfft(beta_E_total, axis=-1)
-                    I_fft = np.fft.rfft(beta_I_total, axis=-1)
+                        downsampled_E, downsampled_I = _overlap_save_filter_and_downsample(
+                            pending_chunk_data['raw_E'], pending_chunk_data['raw_I'],
+                            pending_chunk_data['left_overlap_E'], pending_chunk_data['left_overlap_I'],
+                            right_overlap_E, right_overlap_I,
+                            overlap_samples_for_filtering, Delta_t, downsampling_factor)
 
-                    # Construct smooth frequency mask
-                    # Hard cutoff:
-                    # mask = (freqs <= cutoff_frequency).astype(float)
+                        np.savez_compressed(os.path.join(Filepath, f"beta_E_activity_{pending_chunk_data['check']}_{pending_chunk_data['simtime']}"), downsampled_E)
+                        np.savez_compressed(os.path.join(Filepath, f"beta_I_activity_{pending_chunk_data['check']}_{pending_chunk_data['simtime']}"), downsampled_I)
 
-                    # Smooth cutoff (exponential roll-off)
-                    rolloff_width = (nyq_freq - cutoff_freq)/2  # Hz (adjust as needed for smoothness)
-                    mask = np.exp(-((freqs - cutoff_freq) / rolloff_width) ** 4)
-                    mask[freqs <= cutoff_freq] = 1.0  # Preserve low frequencies
+                        # Left overlap for current chunk = tail of previous chunk
+                        left_overlap_E = pending_chunk_data['raw_E'][:, -overlap_samples_for_filtering:]
+                        left_overlap_I = pending_chunk_data['raw_I'][:, -overlap_samples_for_filtering:]
+                    else:
+                        # First chunk: zero-pad the left side
+                        left_overlap_E = np.zeros((spatial_modes, overlap_samples_for_filtering), dtype=beta_E_total.dtype)
+                        left_overlap_I = np.zeros((spatial_modes, overlap_samples_for_filtering), dtype=beta_I_total.dtype)
 
-                    # Apply mask
-                    E_fft_filtered = E_fft * mask[np.newaxis,:]
-                    I_fft_filtered = I_fft * mask[np.newaxis,:]
+                    # Store current chunk as pending (safe: beta_E_total is rebound next iteration)
+                    pending_chunk_data = {
+                        'raw_E': beta_E_total,
+                        'raw_I': beta_I_total,
+                        'left_overlap_E': left_overlap_E,
+                        'left_overlap_I': left_overlap_I,
+                        'check': check,
+                        'simtime': simtime,
+                    }
 
-                    # Inverse FFT to time domain
-                    E_filtered_data = np.fft.irfft(E_fft_filtered, axis=-1)
-                    I_filtered_data = np.fft.irfft(I_fft_filtered, axis=-1)
-
-                    # Downsample: safe because high frequencies are removed
-                    downsampled_E = E_filtered_data[:,::downsampling_factor].astype(np.float32)
-                    downsampled_I = I_filtered_data[:,::downsampling_factor].astype(np.float32)
-
-                    np.savez_compressed(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}'),downsampled_E)
-                    np.savez_compressed(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}'),downsampled_I)
                 else:
                     np.savez_compressed(os.path.join(Filepath,f'beta_E_activity_{check}_{simtime}'),beta_E_total)
                     np.savez_compressed(os.path.join(Filepath,f'beta_I_activity_{check}_{simtime}'),beta_I_total)
 
-                
 
-                
+    # Flush the last pending chunk (right overlap = reflection padding since no next chunk exists)
+    if SaveActivity and not decimate and pending_chunk_data is not None:
+        right_overlap_E = pending_chunk_data['raw_E'][:, -overlap_samples_for_filtering:][:, ::-1]
+        right_overlap_I = pending_chunk_data['raw_I'][:, -overlap_samples_for_filtering:][:, ::-1]
+
+        downsampled_E, downsampled_I = _overlap_save_filter_and_downsample(
+            pending_chunk_data['raw_E'], pending_chunk_data['raw_I'],
+            pending_chunk_data['left_overlap_E'], pending_chunk_data['left_overlap_I'],
+            right_overlap_E, right_overlap_I,
+            overlap_samples_for_filtering, Delta_t, downsampling_factor)
+
+        np.savez_compressed(os.path.join(Filepath, f"beta_E_activity_{pending_chunk_data['check']}_{pending_chunk_data['simtime']}"), downsampled_E)
+        np.savez_compressed(os.path.join(Filepath, f"beta_I_activity_{pending_chunk_data['check']}_{pending_chunk_data['simtime']}"), downsampled_I)
 
 
     return beta_E_total
@@ -590,6 +626,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                       d_e=1, d_i=1, P=0, Q=0, tau_e=1, tau_i=1, 
                        aDW_EE=1, aDW_IE=1, aDW_EI=1, aDW_II=1,
                        bDW_EE=1, bDW_IE=1, bDW_EI=1, bDW_II=1,
+                       cDW_EE=0, cDW_IE=0, cDW_EI=0, cDW_II=0,
                       sigma_noise_e=1, sigma_noise_i=1,
                       Graph_Kernel='Gaussian', 
                       E_total=None, beta_E_total=None, compute_FC=False,
@@ -674,6 +711,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
 
                                                         aDW_EE, aDW_IE, aDW_EI, aDW_II,
                                                         bDW_EE, bDW_IE, bDW_EI, bDW_II,    
+                                                        cDW_EE, cDW_IE, cDW_EI, cDW_II,  
                                                        sigma_noise_e, sigma_noise_i, min_omega, max_omega, delta_omega, omegas,
                                                        Spatial_Spectrum_Only=False, Visual=False)
          
@@ -683,6 +721,7 @@ def Activity_Analysis(Ess, Iss, Delta_t,
                                                        tau_e, tau_i,
                                                  aDW_EE, aDW_IE, aDW_EI, aDW_II,
                                                  bDW_EE, bDW_IE, bDW_EI, bDW_II, 
+                                                 cDW_EE, cDW_IE, cDW_EI, cDW_II,  
                                                        sigma_noise_e, sigma_noise_i,
                                                        Spatial_Spectrum_Only=True, Visual=False)         
          
@@ -776,3 +815,34 @@ def Activity_Analysis(Ess, Iss, Delta_t,
         return PS, TPS, FC
     else:    
         return PS, TPS
+    
+
+def _overlap_save_filter_and_downsample(raw_chunk_E, raw_chunk_I,
+                                         left_overlap_E, left_overlap_I,
+                                         right_overlap_E, right_overlap_I,
+                                         overlap_samples, delta_t, downsampling_factor):
+    """Anti-alias FFT filter with overlap margins to avoid circular convolution, then downsample."""
+    chunk_time_steps = raw_chunk_E.shape[-1]
+    extended_E = np.concatenate([left_overlap_E, raw_chunk_E, right_overlap_E], axis=-1)
+    extended_I = np.concatenate([left_overlap_I, raw_chunk_I, right_overlap_I], axis=-1)
+
+    extended_time_steps = extended_E.shape[-1]
+    nyquist_frequency = 1 / (2 * downsampling_factor * delta_t)
+    cutoff_frequency = 0.9 * nyquist_frequency
+    rolloff_width = (nyquist_frequency - cutoff_frequency) / 2
+
+    frequencies = np.fft.rfftfreq(extended_time_steps, d=delta_t)
+    frequency_mask = np.exp(-((frequencies - cutoff_frequency) / rolloff_width) ** 4)
+    frequency_mask[frequencies <= cutoff_frequency] = 1.0
+
+    filtered_E = np.fft.irfft(np.fft.rfft(extended_E, axis=-1) * frequency_mask[np.newaxis, :],
+                               n=extended_time_steps, axis=-1)
+    filtered_I = np.fft.irfft(np.fft.rfft(extended_I, axis=-1) * frequency_mask[np.newaxis, :],
+                               n=extended_time_steps, axis=-1)
+
+    # Discard contaminated overlap margins, keep clean center, downsample
+    clean_E = filtered_E[:, overlap_samples : overlap_samples + chunk_time_steps]
+    clean_I = filtered_I[:, overlap_samples : overlap_samples + chunk_time_steps]
+
+    return (clean_E[:, ::downsampling_factor].astype(np.float32),
+            clean_I[:, ::downsampling_factor].astype(np.float32))
